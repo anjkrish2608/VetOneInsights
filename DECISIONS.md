@@ -67,6 +67,12 @@
    - 81 of them are from earlier days (2-5 Nov: 3, 2, 20, 56)
    - The more recent the day, the more are unresolved.
 - Yesterday's no-show count is therefore incomplete at 8am: 5 Nov showed 13 no-shows and 56 still booked.
+- history
+   - start is not located somewhere between January 2026 and 1 of August 2026
+   - want to load 1st of September as it allows a 9 week average
+   - appears to be closed on Sundays
+   - no booked rows in September therefore the old data is settled, supporting the 3 day exclusion rule
+   - Diagnosed a history pull that stopped after one page. Probed the API with four filter combinations (from/to, no `to`, a different start date, a smaller `limit`): all returned a `next_cursor`, so the API was fine. The cause was a missing line in my own loop that read the cursor from each response. Fix: the pull now prints why it stopped, and warns if the newest appointment is more than 3 days before the end date.
 
 ## Storage
 - **SQLite as the store, with the business logic in SQL views.** 
@@ -93,10 +99,11 @@
   Azure SQL with Power BI reading the same views. SQLite is the demo store.
 
 ## Extract and load
-- **Retry server errors (5xx) up to 4 times with 2/4/8/16s pauses; never retry 4xx.** (Decided, built)
-  Why: I saw a one-off 500 on page 4 ("temporary error, please retry") that succeeded on retry. A 4xx means my request is wrong, which retrying can't fix.
-- **On a 401, fetch a new token and retry once.** (Planned, not built yet)
+- **Retry rules:** 5xx up to 4 times with 2/4/8/16s pauses; **429: wait for the `Retry-After` header, then retry**; other 4xx are not retried, since the request itself is wrong. (Decided, built)
+  Why:  I saw a one-off 500 on page 4 ("temporary error, please retry") that succeeded on retry. Then I hit a 429 on page 60 of the history pull at about 5 requests a second. My first rule ("never retry 4xx") was wrong for 429.
+- **On a 401, fetch a new token and retry once.** 
   Why: the token response has no expiry time. Once, because a second 401 means the problem isn't expiry, and repeated failed logins could trigger a lockout.
+  Built but not tested
 - **Load by upsert on appointment `id`, updating only when the incoming `updated_at` is newer, inside one transaction.** 
   verified by running the load twice with identical count
   Rejected: delete and reload (simple, but loses what the pipeline has seen); append only (duplicates every changed row).
@@ -105,11 +112,14 @@
 - **Fields loaded: id, clinic_id, service, scheduled_at, duration_minutes, status, cancelled_at, updated_at.** (Decided)
   Left out: `patient_ref` (patient-related and unneeded for a clinic view), `vet_id` (vet-level reporting is out of scope), `created_at` (unused).
   Change if: Nordvet wants vet-level reporting, in which case I'd add `vet_id` and re-load.
+- **History pull is resumable:** it restarts from the last saved day and de-duplicates by `id`. (Decided, built)
+  Why: a backfill of about 235 pages shouldn't start over when it's interrupted, and a live system shouldn't be hit with repeat calls.
+  
 
 
 ## Metric and reporting rules
 - **"Yesterday" defined per clinic, midnight to midnight in that clinic's own timezone.** 
-  Why: the API provides a timezone for every clinic (Europe/Copenhagen for DK, Europe/Stockholm for SE). Both countries share the same clock time, but reading the field means I don't hardcode that assumption. Note timezone does not conflict with appointment time (summer not tested).
+  Why: the API provides a timezone for every clinic (Europe/Copenhagen for DK, Europe/Stockholm for SE). Both countries share the same clock time, but reading the field means I don't hardcode that assumption. Note timezone does not conflict with appointment time, both summer and winter time checked.
   Change if: Mette wants one company-wide cut-off time instead.
 
 - **how unresolved bookings are handled**
@@ -172,7 +182,7 @@ NEED TO CONFIRM NUMBER IN SQL
 NEED TO ADD EXPLANATION
 
 - **Inactive clinics**
-Assumption: exclude them, since they have no future slots to lose. Check first whether Ystad has any recent appointments.
+Assumption: Exclude them, since they have no future slots to lose. There were some appointments in September but were no recent appointments (7days).
 
 - **`patient_ref`and `vet_id`**
 Assumption: not required for clinic level no show view. Best to not add unnecessary patient related data. Could be interesting to investigate these fields if a particular clinic is an outlier.

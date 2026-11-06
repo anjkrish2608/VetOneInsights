@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 DB_PATH = "data/nordvet.sqlite"
 
 clinics = json.loads(pathlib.Path("data/clinics_raw.json").read_text(encoding="utf-8"))["data"]
-appts = json.loads(pathlib.Path("data/appointments_all_raw.json").read_text(encoding="utf-8"))
+appts = json.loads(pathlib.Path("data/appointments_history_raw.json").read_text(encoding="utf-8"))
 
 pathlib.Path("data").mkdir(exist_ok=True)
 conn = sqlite3.connect(DB_PATH)
@@ -63,8 +63,8 @@ with conn:  # one transaction: all rows are written, or none
     )
 
 # Check the load against what we saw in the raw data
-print("clinics:", conn.execute("SELECT COUNT(*) FROM clinics").fetchone()[0], "(expect 39)")
-print("appointments:", conn.execute("SELECT COUNT(*) FROM appointments").fetchone()[0], "(expect 5196)")
+print("clinics:", conn.execute("SELECT COUNT(*) FROM clinics").fetchone()[0], f"(expect {len(clinics)})")
+print("appointments:", conn.execute("SELECT COUNT(*) FROM appointments").fetchone()[0], f"(expect {len(appts)})")
 for status, n in conn.execute("SELECT status, COUNT(*) FROM appointments GROUP BY status ORDER BY 2 DESC"):
     print(" ", status, n)
 conn.close()
