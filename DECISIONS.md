@@ -97,7 +97,8 @@
   Why: I saw a one-off 500 on page 4 ("temporary error, please retry") that succeeded on retry. A 4xx means my request is wrong, which retrying can't fix.
 - **On a 401, fetch a new token and retry once.** (Planned, not built yet)
   Why: the token response has no expiry time. Once, because a second 401 means the problem isn't expiry, and repeated failed logins could trigger a lockout.
-- **Load by upsert on appointment `id`, updating only when the incoming `updated_at` is newer, inside one transaction.** (Decided, to be verified by running the load twice)
+- **Load by upsert on appointment `id`, updating only when the incoming `updated_at` is newer, inside one transaction.** 
+  verified by running the load twice with identical count
   Rejected: delete and reload (simple, but loses what the pipeline has seen); append only (duplicates every changed row).
 - **How far back to re-pull each run.** (Open)
   Options: a fixed window (14 days?) vs `updated_since` since the last successful run. Must test that `updated_since` really catches status changes before relying on it.
@@ -163,7 +164,7 @@ NEED TO CONFIRM NUMBER IN SQL
   Why: Nordvet's team already works in M365 and Power BI, so nothing new to learn or license beyond Azure. Emil's team can read and change SQL views.
 
   Rejected: running it on a laptop (nobody owns it); Data Factory for the extract (heavier than this needs, though a fair option if Nordvet wants no code); Fabric as the store (a real alternative, but more than a first slice needs. I'd compare cost before ruling it out).
-  
+
   Check before the interview: what Nordvet's Power BI licence includes, since subscription emails and sharing depend on it. I haven't verified that.
   
 ## Open questions (assumption I made)
