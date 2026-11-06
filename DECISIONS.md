@@ -20,6 +20,18 @@
   Why:  `data/` keeps API pulls and the database out of git, as the brief asks for no data dumps. `.env`need to keep client id and client secret hidden
   Change if: I needed to share a small sample file with reviewers, in which case I'd add an exception for it.
 
+## Language
+- **Python & SQL.**
+  Why:
+  Rejected: 
+  Change if: 
 - **decision made**
   Why: XX
   Change if: XX
+
+## Data Observations
+- **Set timeout to 60 in `explore.py`**
+  
+- **Token response has no expiry field**
+  Documentation says tokens expire but toke  response has no expiry field.
+  Handling: on a 401 will need to fetch a new token and retry
