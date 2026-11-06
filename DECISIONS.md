@@ -21,10 +21,10 @@
   Change if: I needed to share a small sample file with reviewers, in which case I'd add an exception for it.
 
 ## Language
-- **Python & SQL.**
-  Why:
-  Rejected: 
-  Change if: 
+- **Python for extract and load.** (Under review)
+  Why for now: I started with Python to get moving and haven't compared it properly yet.
+  To decide: Python vs PowerShell vs Power Query vs Azure Data Factory, weighing what I can build and explain in the time, what Emil's team can maintain, and running cost.
+
 - **decision made**
   Why: XX
   Change if: XX
@@ -68,6 +68,43 @@
    - The more recent the day, the more are unresolved.
 - Yesterday's no-show count is therefore incomplete at 8am: 5 Nov showed 13 no-shows and 56 still booked.
 
+## Storage
+- **SQLite as the store, with the business logic in SQL views.** 
+  Why a database at all: 
+  rows change after I first see them (no-shows are recorded a median 25 hours after the appointment), so I need to update rows by `id` instead of re-downloading a window.
+
+  Why SQLite: 
+  one file, nothing to install, runs on any laptop from a fresh clone. The views are plain SQL that Emil's team can read.
+
+  Rejected: 
+  - CSV files only (no keys, so no safe re-runs)
+  - pandas in memory only (nothing persists, logic ends up in Python)
+  - Parquet as the store (no in-place updates, so I'd be rebuilding a database badly)
+  - DuckDB (extra tool to learn and explain, no clear gain at this size)
+  - Postgres or SQL Server in Docker (setup risk on the demo laptop)
+  - Azure SQL directly (needs a cloud account and costs money for a first slice).
+  
+  Limits: 
+  single writer
+  Power BI has no built-in SQLite connector
+  date functions differ from SQL Server's (`strftime` vs `DATEPART`).
+
+  For Nordvet: 
+  Azure SQL with Power BI reading the same views. SQLite is the demo store.
+
+## Extract and load
+- **Retry server errors (5xx) up to 4 times with 2/4/8/16s pauses; never retry 4xx.** (Decided, built)
+  Why: I saw a one-off 500 on page 4 ("temporary error, please retry") that succeeded on retry. A 4xx means my request is wrong, which retrying can't fix.
+- **On a 401, fetch a new token and retry once.** (Planned, not built yet)
+  Why: the token response has no expiry time. Once, because a second 401 means the problem isn't expiry, and repeated failed logins could trigger a lockout.
+- **Load by upsert on appointment `id`, updating only when the incoming `updated_at` is newer, inside one transaction.** (Decided, to be verified by running the load twice)
+  Rejected: delete and reload (simple, but loses what the pipeline has seen); append only (duplicates every changed row).
+- **How far back to re-pull each run.** (Open)
+  Options: a fixed window (14 days?) vs `updated_since` since the last successful run. Must test that `updated_since` really catches status changes before relying on it.
+- **Fields loaded: id, clinic_id, service, scheduled_at, duration_minutes, status, cancelled_at, updated_at.** (Decided)
+  Left out: `patient_ref` (patient-related and unneeded for a clinic view), `vet_id` (vet-level reporting is out of scope), `created_at` (unused).
+  Change if: Nordvet wants vet-level reporting, in which case I'd add `vet_id` and re-load.
+
 
 ## Metric and reporting rules
 - **"Yesterday" defined per clinic, midnight to midnight in that clinic's own timezone.** 
@@ -87,6 +124,16 @@ NEED TO CONFIRM NUMBER IN SQL
   Known limit: a few are recorded later (the slowest took nearly 5 days), so the ranking still slightly understates no-shows. That's acceptable because the bias applies to every clinic equally, though I haven't verified that.
   Change if: more history shows the lag is longer, in which case I'd raise the number.
 
+- **No-show rate = no_show ÷ (completed + no_show); cancelled excluded.**
+  Why: a cancelled slot can be rebooked; a no-show can't.
+  Open question: is a very late cancellation a no-show? Check `cancelled_at` against `scheduled_at`.
+
+- **Inactive clinics (CL-420 Ystad) excluded from Mette's view.** 
+  Why: no appointments in the window, and no future slots to lose.
+
+- **Money impact = lost vet-minutes from no-shows (`duration_minutes`), not kroner.** 
+  Why: the API has no prices. Karin's "where are we losing money" can be mapped to lost billable vet minutes
+
 ## Pipeline choices
 - **Retry server errors (5xx) up to 4 times with 2/4/8/16s pauses; never retry 4xx.**
   Why: the 500 was temporary and the response body said to retry, and a 4xx means my request is wrong, which retrying can't fix.
@@ -95,6 +142,29 @@ NEED TO CONFIRM NUMBER IN SQL
 - **Load only the fields the metric or the pipeline uses. Left out: `patient_ref`, `vet_id`, `created_at`.**
   Why: `patient_ref` is patient-related and a clinic-level no-show view doesn't need it; `vet_id` and `created_at` aren't used by anything I'm building. `cancelled_at` is kept for the late-cancellation check; `updated_at` is kept so the pipeline can detect rows whose status changed.
   Change if: Nordvet wants vet-level reporting, in which case I'd add `vet_id` and re-load from the API.
+
+- **Daily batch, not real-time.** 
+  Why: Mette asked to know how yesterday went each morning, and no-show statuses arrive about a day late, so "real-time" would show wrong numbers faster. It's also cheaper, which matters for Karin.
+  Rejected: real-time or streaming (Anders asked for it, but it adds cost and no usable accuracy).
+  Change if: Nordvet adds a use case that acts within the hour, such as reassigning a vet when a patient doesn't arrive.
+
+## Output for Mette
+- **`FINDINGS.md`, a short list. No slides, no Power BI report.** 
+  Why: the brief says "a simple dashboard or a short list". I focused on being confident in the metrics.
+  Rejected: a Power BI report (stretch only, if time allows); an ODBC link from Power BI to SQLite (more setup, brittle).
+  Optional later: export the final view as CSV or Parquet, which Power BI reads natively.
+
+## Where it would run for Nordvet
+- **Azure runs the pipeline and holds the data. Microsoft 365 is how Mette receives it.**
+  Pipeline: a scheduled job (Azure Functions or a Container Apps Job) runs each morning, writes to Azure SQL, and keeps secrets in Key Vault.
+
+  Reporting: Power BI reads the same SQL views. The report can be emailed each morning as a subscription, or posted to Mette in Teams or Outlook (for example through Power Automate), so she sees it without opening anything.
+
+  Why: Nordvet's team already works in M365 and Power BI, so nothing new to learn or license beyond Azure. Emil's team can read and change SQL views.
+
+  Rejected: running it on a laptop (nobody owns it); Data Factory for the extract (heavier than this needs, though a fair option if Nordvet wants no code); Fabric as the store (a real alternative, but more than a first slice needs. I'd compare cost before ruling it out).
+  
+  Check before the interview: what Nordvet's Power BI licence includes, since subscription emails and sharing depend on it. I haven't verified that.
   
 ## Open questions (assumption I made)
 - **Set timeout to 60 in `explore.py`**
@@ -105,3 +175,9 @@ Assumption: exclude them, since they have no future slots to lose. Check first w
 
 - **`patient_ref`and `vet_id`**
 Assumption: not required for clinic level no show view. Best to not add unnecessary patient related data. Could be interesting to investigate these fields if a particular clinic is an outlier.
+
+## Left out on purpose
+- Real-time, alerting, vet-level and patient-level analysis, a Power BI report, tests beyond a clean-run check.
+
+## If I had more time
+- Test `updated_since` against a fixed window; build the 401 retry; check `include_deleted`; verify the lag is equal across clinics; add tests and a failed-run alert; move to Azure SQL and a scheduled job.
