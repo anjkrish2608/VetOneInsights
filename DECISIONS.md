@@ -91,6 +91,10 @@ NEED TO CONFIRM NUMBER IN SQL
 - **Retry server errors (5xx) up to 4 times with 2/4/8/16s pauses; never retry 4xx.**
   Why: the 500 was temporary and the response body said to retry, and a 4xx means my request is wrong, which retrying can't fix.
   Change if: errors persist, in which case I'd fail the run clearly and keep the previous data.
+
+- **Load only the fields the metric or the pipeline uses. Left out: `patient_ref`, `vet_id`, `created_at`.**
+  Why: `patient_ref` is patient-related and a clinic-level no-show view doesn't need it; `vet_id` and `created_at` aren't used by anything I'm building. `cancelled_at` is kept for the late-cancellation check; `updated_at` is kept so the pipeline can detect rows whose status changed.
+  Change if: Nordvet wants vet-level reporting, in which case I'd add `vet_id` and re-load from the API.
   
 ## Open questions (assumption I made)
 - **Set timeout to 60 in `explore.py`**
