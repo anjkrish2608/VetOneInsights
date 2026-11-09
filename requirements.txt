@@ -1,2 +1,4 @@
-requests
-python-dotenv
+requests==2.34.2
+python-dotenv==1.2.4
+duckdb==2.0.0
+ruff==0.17.4
