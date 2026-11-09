@@ -2,8 +2,8 @@
 
 Read this file and DECISIONS.md before doing anything. Decisions in DECISIONS.md
 are mine; don't change them without asking me first.
-DECISIONS_v1.md is the original SQLite-era log, kept as a historical record.
-Never edit it.
+docs/history/DECISIONS_v1.md is the original SQLite-era log, kept as a historical record.
+Never edit its content (it was moved there from the repo root on 9 Nov, unchanged).
 
 ## The client and the problem
 - Nordvet: 38 vet clinics in Denmark and Sweden, all on one practice system (VetOne).
@@ -43,7 +43,7 @@ Never edit it.
 - Raw layer is append-only. Staging dedupes to the latest updated_at per appointment id.
 - Daily batch, not real-time.
 - This replaced an earlier SQLite + SQL views plan. The SQLite work is in main's history
-  before the dbt-duckdb merge, and its decisions are in DECISIONS_v1.md.
+  before the dbt-duckdb merge, and its decisions are in docs/history/DECISIONS_v1.md.
 - Fallback: if dbt blocks progress, use plain SQL views in DuckDB. Ask me first.
 
 ## Metric decisions (fixed)
