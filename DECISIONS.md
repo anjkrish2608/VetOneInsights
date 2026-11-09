@@ -20,7 +20,7 @@ Entries marked `> **REVIEW:**` are missing a required part or have a thin "why";
 - [Storage and transformation](#storage-and-transformation): D3
 - [Tooling and repo structure](#tooling-and-repo-structure): D-python, D-dbt-v1, D-lint, D-profiles, D-entry, D-tests, D-config, D-logging, D-structure, D-docs, D-images
 - [Frequency](#frequency): D-batch
-- [Ingestion](#ingestion): D-deleted, D-backfill, D-incremental, D-validate, D-errors, D-atomic, D-metadata, D-clinics
+- [Ingestion](#ingestion): D-deleted, D-backfill, D-incremental, D-validate, D-errors, D-api-change, D-atomic, D-metadata, D-clinics
 - [dbt models](#dbt-models): D-materialization, D-stg-clinics, D-dedupe, D-timestamps, D-test-severity, D-marts, D-as-of, D-singular-tests, D-analyses, D-dbt-run
 - [Metric](#metric): D-formula, D-metric, D-settled, D-last-open-day, D-ranking-window, D-inactive, D-money, D-late-cancellations, D-fields
 - [Findings](#findings): D-findings, D-findings-snapshot, D-morning-sample, D-fte, D-findings-staging
@@ -341,6 +341,51 @@ Rejected:
 - treating 429 like other 4xx and failing (broke the SQLite-era history pull)
 - tenacity / urllib3 Retry (extra dependency, harder for Emil's team to read)
 
+**D-api-change - If VetOne changes its API, the run fails or warns; it never loads quietly wrong data.**
+Status: Accepted, 9 Nov.
+Context (why): VetOne is a live third-party system and its docs are incomplete, so its
+format can change without notice. Most changes already fail loudly (a removed field, a new
+status, a 404, a changed timestamp format; see D-errors, D-test-severity, D-singular-tests),
+but three would have passed silently and reported success:
+- `next_cursor` renamed: the client read it with `.get()`, so a missing cursor looked like
+  the last page and only the first 500 rows would load (the same failure as the SQLite-era
+  one-page bug, D-validate)
+- `include_deleted` stops working or `deleted_at` is renamed: deleted appointments counted
+  again (API note [1](docs/vetone_api_notes.md#1-deleted-appointments-are-hidden-by-default))
+- `updated_since` changes meaning: late status changes quietly missed (API note
+  [3](docs/vetone_api_notes.md#3-updated_since-drops-the-default-7-day-window))
+Three more would fail, but with a bare Python traceback: `data` or `access_token` renamed, or
+`Retry-After` sent as a date. And after any failed run, Mette's view keeps the last good
+numbers with nothing saying they're old.
+Decision (what):
+- the `next_cursor` key must be present on every page (VetOne sends it as `null` on the last
+  page); if it's missing, the run stops instead of loading a partial pull
+- a full page (500 rows) with no cursor logs a warning (it can legitimately happen once)
+- a missing `data` list or `access_token` stops the run with a plain message naming the keys
+  that did arrive (never their values)
+- `Retry-After` is read as seconds or as an HTTP date; anything else waits 5s with a warning
+- a backfill with no deleted appointments logs a warning (the 9 Nov backfill had 702)
+- `dbt source freshness` runs before `dbt build` and warns if the newest `updated_at` is more
+  than 48 hours old; Python repeats it as a "VetOne data looks stale" warning in the run log
+- the daily mart has a `last_loaded_at` column, so Power BI can show "Data last updated"
+Tested 9 Nov: each guard with a fake response (renamed `data`, `access_token`, `next_cursor`;
+full last page; date and garbage `Retry-After`), and the freshness warning by lowering its
+threshold to 1 minute. Full run: dbt 41/41.
+Rejected:
+- failing on any new or unknown field (APIs add fields all the time; that already logs a
+  warning, and a new field can't make the numbers wrong)
+- making freshness an error (a long holiday weekend has no status updates and would block the
+  morning report; a warning and the `last_loaded_at` column are enough)
+- a weekly re-pull of recent days compared with raw, to catch `updated_since` drift (the most
+  thorough check, but a second code path to maintain; in Next steps)
+- a JSON schema / contract library (more to explain than the handful of checks it replaces)
+Consequences:
+Trade-offs: about 40 lines of checks in the client; a full last page triggers a harmless
+warning about 1 run in 500; freshness adds about 5 seconds per run; the 48-hour threshold
+is a guess from normal working days.
+Change if: VetOne publishes a changelog or versioned API (then pin the version and drop some
+checks), or the warnings start firing on normal days (then tune the threshold).
+
 **D-atomic - Each pull is loaded all-or-nothing, in one transaction.**
 All pages are collected first, then inserted in a single transaction. A crash or API failure
 mid-pull leaves raw exactly as it was.
@@ -495,6 +540,7 @@ after ingestion has closed its DuckDB connection (DuckDB allows one writer). The
 the running Python is used, so the venv's pinned version runs even if the venv isn't
 activated. If dbt fails, the run exits with code 1; this run's raw rows stay loaded (raw is
 append-only and correct), so after fixing the cause a plain re-run finishes the job.
+Since 9 Nov, `dbt source freshness` runs first and only warns (D-api-change).
 Rejected:
 - dbt's Python API (`dbtRunner`): less familiar to a SQL team than the command line
 - `dbt run` then `dbt test` separately: a bad staging model would feed the marts before tests run
@@ -722,6 +768,13 @@ Candidates (Claude's suggestions: keep, edit or delete):
   recorded after the appointment started is really a no-show; then add a separate
   `late_cancellations` count to the daily mart, or fold them into the rate if Nordvet agrees
 - Lead-time analysis using `created_at`: do bookings made far ahead (or last minute) no-show more?
-- Add pytest for the API client (pagination, token expiry) and run checks in GitHub Actions
+- Add pytest for the API client (pagination, token expiry, and the D-api-change guards, using
+  recorded API responses) and run checks in GitHub Actions
+- Weekly re-pull of the last 14 days, compared with raw, to catch `updated_since` drifting
+  silently (D-api-change rejected it for this slice as a second code path)
+- Show `last_loaded_at` as "Data last updated" in the Power BI report, so a stale morning view
+  is obvious to Mette (the column exists; the report doesn't yet)
+- Route pipeline warnings (stale data, full last page, no deleted rows in a backfill) to the
+  same Azure Monitor alert as failures, at a lower severity
 - Faster raw insert for big backfills (e.g. DuckDB reading a temporary JSON/Parquet file
   instead of `executemany`), if the 47s backfill insert ever matters

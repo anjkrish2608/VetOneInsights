@@ -64,8 +64,12 @@ Then open `.env` and fill in `VETONE_BASE_URL`, `VETONE_CLIENT_ID` and `VETONE_C
 - **First run** (empty database): a backfill from 1 Sep 2026 of about 50,000 appointments,
   taking about 2 minutes. Most of that is waiting when VetOne asks it to slow down.
 - **Every run after that:** only appointments changed since the last run. A few seconds.
-- Then `dbt build` builds the 4 models and runs all 36 data tests. The run ends with
+- Then dbt checks that VetOne's data is fresh (`dbt source freshness`, a warning only) and
+  `dbt build` builds the 4 models and runs all 37 data tests. The run ends with
   `Pipeline run … finished`, or exits with code 1 and a clear `FAILED` message.
+- **Warnings to look for** in the log: `VetOne data looks stale`, `Last page was full …`, or
+  `Backfill has no deleted appointments`. Each one means VetOne may have changed how its API
+  behaves (D-api-change).
 - Safe to re-run at any time: nothing is duplicated or lost.
 
 A first run from a fresh clone on 9 Nov 2026 (dbt's per-test lines shortened):
@@ -86,7 +90,8 @@ INFO    run_pipeline: dbt build passed in 13.0s
 INFO    run_pipeline: Pipeline run 20261109T133323Z finished in 131.8s
 ```
 
-(That run was before the marts existed. Today `dbt build` has 40 steps: 4 models and 36 tests.)
+(That run was before the marts and the freshness check existed. Today `dbt build` has 41
+steps: 4 models and 37 tests.)
 
 **See the output:**
 
@@ -127,7 +132,7 @@ INFO    run_pipeline: Pipeline run 20261109T133323Z finished in 131.8s
 | raw | `raw_clinics` | clinic, per run | A full snapshot of the clinic list on every run. |
 | staging | `stg_vetone__appointments` | appointment | The latest version of each appointment, with deleted ones removed and timestamps typed. |
 | staging | `stg_vetone__clinics` | clinic | The latest snapshot (39 clinics, 38 active). |
-| mart | `mart_clinic_daily_noshows` | clinic per day | Counts, confirmed rate with lower/upper bounds, awaiting status, lost vet minutes. Mette's view: `is_last_open_day`. |
+| mart | `mart_clinic_daily_noshows` | clinic per day | Counts, confirmed rate with lower/upper bounds, awaiting status, lost vet minutes, and `last_loaded_at` (when data last arrived). Mette's view: `is_last_open_day`. |
 | mart | `mart_clinic_noshow_ranking` | active clinic | Rate over the newest 28 settled days (ranked) and over all history (baseline), with the gap to the network rate. |
 
 Python only does the API part ([ingestion/](ingestion/)); everything after the raw tables is
@@ -184,6 +189,7 @@ the daily mart reconciles to staging.
 | A mart for service and weekday | Those two findings are queried by hand in FINDINGS.md for now (D-findings-staging). |
 | Incremental dbt models | A full rebuild takes about a second at this size (D-materialization). |
 | Alerting on spikes | A next step once Mette has used the daily view. |
+| A weekly cross-check of recent data against VetOne | The guards in D-api-change catch most API changes; a full re-pull comparison is a next step. |
 | dbt v2 | dbt Core v1 has the adapter support and documentation Emil's team will need (D-dbt-v1). |
 | Hosting the dbt docs | They run locally; a static site in Azure is a small next step. |
 
@@ -244,5 +250,9 @@ be worth a few cents.
 **Who runs it:**
 - **Emil's team** owns it after handover. They change the SQL models (dbt is SQL plus a little
   YAML), watch the failure alert and re-run a failed day with the same command.
+- **If VetOne changes its API**, the run either stops with a message naming what changed (a
+  missing field or key, a new status, an error code) or logs one of the warnings above; it
+  doesn't load quietly wrong numbers. After a failed run, Mette's view keeps the last good
+  numbers, and `last_loaded_at` shows how old they are (D-api-change).
 - **Nordvet IT** owns the VetOne credentials and rotates them in Key Vault.
 - **Heyra** hands over the repo, this README and DECISIONS.md, and a walkthrough of the dbt docs.

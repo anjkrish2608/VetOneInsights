@@ -231,6 +231,10 @@ Contents: [API behaviour](#api-behaviour) (1-13) · [Data behaviour](#data-behav
 
 ## Not yet observed
 
+- **A change to the API's format or behaviour.** None seen so far, but VetOne is a live
+  third-party system. How each kind of change would show up (a failed run, a warning, or a
+  stale-data warning) is designed in D-api-change.
+
 - **The response to an expired token.** The test token was deleted before it expired. The 401
   handling is tested with an invalid token instead (D-errors).
 - **Whether `from`/`to` mean the clinic's local date or UTC.** Appointments run 08:00-17:15, so
