@@ -3,6 +3,21 @@
 Each entry: what I chose, why, and what I rejected.
 (Draft carried over from planning. Rewrite these in your own words before submitting.)
 
+## Contents
+
+- [Repo](#repo): D1, D2, D-branch
+- [Language](#language): D-lang
+- [Storage and transformation](#storage-and-transformation): D3
+- [Tooling and repo structure](#tooling-and-repo-structure): D-python, D-dbt-v1, D-lint, D-profiles, D-entry, D-tests, D-config, D-logging, D-structure, D-docs, D-images
+- [Frequency](#frequency): D-batch
+- [Ingestion](#ingestion): D-deleted, D-backfill, D-incremental, D-validate, D-errors, D-atomic, D-metadata, D-clinics
+- [dbt models](#dbt-models): D-materialization, D-stg-clinics, D-dedupe, D-timestamps, D-test-severity, D-marts, D-as-of, D-singular-tests, D-analyses, D-dbt-run
+- [Metric](#metric): D-formula, D-metric, D-settled, D-last-open-day, D-ranking-window, D-inactive, D-money, D-late-cancellations, D-fields
+- [Findings](#findings): D-findings, D-findings-snapshot, D-morning-sample, D-fte, D-findings-staging
+- [Production (Azure)](#production-azure): D-azure
+- [API observations](#api-observations)
+- [Next steps / what I'd change with more time](#next-steps--what-id-change-with-more-time)
+
 ## Repo
 **D1 - .gitignore template: Python.** Hosted on GitHub.
 Rejected: Node (not a JS project), Terraform (Azure hosting is described, not built),
@@ -120,154 +135,24 @@ Rejected:
 **D-logging - Python logging module, with row counts and run time per step.**
 Rejected: print statements (can't be filtered or sent to Azure Monitor later).
 
-**D-structure - Flat, small repo: `ingestion/`, `nordvet_dbt/`, `data/` (gitignored), docs at root.**
-The structure mirrors the flow, so Emil can find things.
+**D-structure - Flat, small repo: `ingestion/`, `nordvet_dbt/`, `data/` (gitignored), `docs/`.**
+The structure mirrors the flow, so Emil can find things. `ingestion/` has an `__init__.py`,
+so it's an explicit Python package rather than relying on Python's implicit namespace packages.
+Documentation is split by the question each file answers (updated 9 Nov):
+- `README.md`: how to run it, assumptions, what's left out, where it would run (the brief's list)
+- `DECISIONS.md`: choices, the alternatives rejected and why ("Why is it built this way?")
+- `docs/vetone_api_notes.md`: what the API and data actually do ("What did you find?")
+- `FINDINGS.md`: the results for Mette
+- `docs/history/DECISIONS_v1.md`: the SQLite-era log, moved out of the root unchanged
+- `docs/images/`: README screenshots (D-images)
+Observations used to sit at the end of DECISIONS.md; they moved out because a quirk is a
+fact about VetOne, while a decision is a choice that could have gone another way.
 Rejected:
 - a `src/` package layout with setup.py/pyproject packaging (it's a pipeline, not a library)
 - a separate repo for dbt (two repos for a two-person team)
-
-## Frequency
-**D-batch - Daily batch, not real-time.**
-Mette's question is about yesterday, every morning. Real-time adds cost and
-running complexity for a two-person IT team, and the API is slow to wake up.
-No-shows are recorded about a day late (D-settled), so real-time would only show wrong
-numbers faster. It's also cheaper, which matters for Karin's cost test.
-Rejected: real-time or streaming (Anders, Head of Digital, asked for it; it adds cost and no
-usable accuracy for this question).
-Change if: Nordvet adds a use case that acts within the hour, such as reassigning a vet when
-a patient doesn't arrive.
-
-## Metric
-**D-formula - no-show rate = no_show / (completed + no_show).**
-Cancelled appointments are excluded, because a cancelled slot isn't a no-show.
-
-**D-metric - Unresolved past `booked` rows.**
-Yesterday is shown per clinic as confirmed no-shows plus a separate
-"awaiting status" count. The headline clinic ranking uses a rate over settled days.
-The lower/upper range is kept as two columns:
-- lower = no_show / (completed + no_show + awaiting): every awaiting appointment turns out completed
-- upper = (no_show + awaiting) / (completed + no_show + awaiting): every awaiting one is a no-show
-Why: completions are recorded within hours but no-shows about a day later, so at 8am
-yesterday's no-shows are mostly still `booked` (API notes 14-15). On 5 Nov at 8am: 1.8%
-confirmed vs 8.9% if every unresolved booking became a no-show. A rate for yesterday alone
-would mislead Mette; counts that can be read at a glance would not. Settled days give a
-stable ranking.
-Rejected:
-- counting unresolved bookings as no-shows (overstates: most turn out completed)
-- ignoring them (understates, and hides the gap)
-- a range as the only view (too wide on a single day to tell clinics apart)
-Change if: Mette would rather wait a few days for final numbers, or VetOne offers a faster
-way to record no-shows.
-
-**D-settled - The last 3 days count as unsettled.**
-They are left out of the clinic-ranking rate.
-Precisely: a day is settled when `days_ago > 3` (as of today, Mon 9 Nov: 5 Nov and earlier).
-In practice the earliest settled day is read about 3.5-4 days after its appointments.
-The 3 is a dbt variable (`unsettled_days` in dbt_project.yml), so it can be raised without
-touching SQL if more history shows no-shows arrive later.
-Why 3: 92.3% of no-shows are recorded within 3 days and 96.1% within 4 (API note 14, which
-has the full lag table, SQLite-era and re-measured). No September day has `booked` rows left,
-and only 3 settled-day appointments were still awaiting a status on 9 Nov (API note 15).
-Known limit: a few no-shows arrive later (the slowest took about 5 days), so the ranking
-slightly understates every clinic's rate.
-Is the lag equal across clinics? (open in the SQLite era, checked 9 Nov) Not exactly: 82.5%
-(Jönköping) to 100% within 3 days, but 93% or more everywhere within 4. The slowest clinics
-have few no-shows (42-70), so part of the spread is noise, and it barely correlates with the
-no-show rate (-0.2). It could move a clinic's rate by a few tenths of a point, not change the
-ranking, where best and worst are 15+ points apart.
-Change if: more history shows the lag getting longer, or a clinic's late recording grows; then
-raise `unsettled_days` to 4.
-Rejected: 1 day (40% of no-shows recorded) or 2 days (81%), measured 9 Nov; 7 days (100%
-recorded, but the ranking would lag a week behind for about 4 points more completeness).
-
-**D-last-open-day - Mette's "yesterday" is the last day any clinic was open (decided 9 Nov).**
-Clinics are closed on Sundays, so on Mondays calendar yesterday has no appointments and the
-view would be empty. `is_last_open_day` marks the most recent day before today with any
-appointments across the network: Saturday on a Monday, the previous day otherwise, and it
-skips public holidays without a holiday calendar. A clinic with no appointments that day
-simply has no row.
-Rejected: strict calendar yesterday (`days_ago = 1`): empty every Monday and after holidays.
-
-**D-ranking-window - Two windows: the recent 28 settled days (ranked), and all settled history.**
-- Recent: the newest 28 settled days (days_ago 4 to 31). The rank uses this, so it reflects
-  what is happening now and Mette can act on it. About 25 appointments per clinic per day
-  gives several hundred per clinic, enough for a stable rate.
-- History: every settled day since `BACKFILL_FROM` (1 Sep), as a baseline, so a clinic whose
-  recent rate jumps can be compared with its own normal.
-- Each window shows its counts (no-shows, completed) next to the rate, so a small sample is
-  visible, plus the network rate and the clinic's gap to it in percentage points.
-- 28 is a dbt variable (`ranking_window_days`).
-Rejected: only the recent window (no baseline); only history (reacts slowly to change).
-
-**D-inactive - Inactive clinics are left out of the ranking but keep their daily history.**
-CL-420 Ystad stays in the daily mart with `is_active = false` (its September data is real)
-and is filtered out of the ranking. `is_active` comes from the latest clinic snapshot, so:
-- a clinic VetOne marks inactive tomorrow drops out of the ranking on the next run, with no
-  code change; its history stays, flagged. The flag shows status *now*, not on that day.
-- `raw_clinics` keeps every snapshot (D-clinics), so the run where it changed is on record.
-- a clinic removed from VetOne entirely fails the `relationships` test (appointments ->
-  clinics), so the run stops loudly instead of silently dropping its appointments.
-- a new clinic appears automatically.
-Rejected: dropping inactive clinics everywhere (loses real history); ranking them (a closed
-clinic in Mette's list is noise).
-
-**D-money - Money lost = booked vet minutes lost to no-shows (`duration_minutes`), not kroner.**
-VetOne has no prices or fees, so Karin's "where are we losing money" is measured in vet time:
-the booked minutes of every no-show. Shown in minutes and hours per clinic-day and per clinic.
-Turning it into kroner needs Nordvet's average revenue per vet hour; that's a single
-multiplication once they give it to us.
-Rejected: guessing a price per service (would present made-up kroner as fact).
-
-**D-late-cancellations - Late cancellations stay "cancelled" for now; flagged to discuss with Nordvet.**
-Late-recorded cancellations *are* picked up: cancelling sets `updated_at` equal to
-`cancelled_at` (all 3,782 cancelled rows), so the next run fetches the change and the marts
-recalculate. They arrive within hours (latest 5h), well inside the 3-day settled rule.
-The open question is what they mean: 766 of 3,782 cancellations (20%) were recorded *after*
-the appointment had started (median 2.8h, 90% within 4.6h). These are probably "the patient
-didn't come and reception marked it cancelled", i.e. no-shows in practice. Counting them would
-raise no-shows from 3,474 to about 4,240 (+22%).
-Decision: keep the fixed metric (cancelled excluded) and leave them out for this first slice.
-This goes beyond what was asked, and changing the definition is Nordvet's call, not ours.
-To discuss with Mette, then possibly add later (see Next steps).
-Rejected for now:
-- counting them as no-shows (changes the agreed metric without the client)
-- adding a `late_cancellations` column now (useful, but not requested; better built once
-  Nordvet has said what a late cancellation means)
-
-**D-fields - patient_ref and vet_id not stored; updated_at, cancelled_at, deleted_at and created_at kept.**
-`patient_ref` and `vet_id` are dropped in Python before loading, so they never reach disk.
-`created_at` is kept although nothing uses it yet: it is cheap and allows a later
-lead-time analysis (how far ahead was the booking made, and do late bookings no-show more?).
-Why not `patient_ref`: it's patient-related, and a clinic-level no-show view doesn't need it.
-Why not `vet_id`: vet-level reporting is out of scope for Mette's question.
-Change if: Nordvet wants vet-level reporting, or wants to dig into an outlier clinic (e.g. is
-Aarhus C's 24% driven by one vet's diary?). Then add `vet_id` to the loader and re-run the
-backfill; `patient_ref` should stay out unless there's a clear, agreed purpose.
-
-## Findings
-**D-findings - FINDINGS.md short list for Mette.**
-No slides, and no Power BI report unless time allows.
-Parquet/CSV only as an optional export of the final view for Power BI.
-
-**D-azure - Production target: Container Apps Job + Key Vault + Azure SQL Database + Power BI.**
-Described in the README, not built (decided 9 Nov).
-- Azure SQL Database (Basic, about $5/month): Emil's team already knows SQL Server tools,
-  Power BI connects natively, and the data is tiny (tens of MB). The dbt models move with the
-  `dbt-sqlserver` adapter; `qualify`, `timezone()`, `strftime` and `datediff` need T-SQL
-  rewrites, and the raw loader switches from DuckDB to an Azure SQL connection.
-- Container Apps Job: runs the unchanged `python run_pipeline.py` daily. A 2-minute run uses
-  about 1% of the free monthly grant (180,000 vCPU-seconds), so about $0.
-- Key Vault for the VetOne credentials, passed in as environment variables (no code change).
-- Prices checked by web search on 9 Nov 2026 (list prices, USD): Azure SQL Basic about $5/month
-  (up to ~$20 by region), Power BI Pro $14/user/month (raised from $10 in 2025; included in
-  Microsoft 365 E5). Infrastructure total about $5-25/month.
-Rejected:
-- DuckDB file on Azure storage with marts exported as Parquet (cheapest, no SQL rewrite, but
-  Power BI reads files rather than a database and it is less familiar to Emil's team)
-- Microsoft Fabric (only sensible if Nordvet already pays for Fabric capacity)
-- Azure Functions (a timer trigger works, but running dbt inside Functions is awkward; the job
-  runs the same command as the laptop)
-- Azure Data Factory for the extract (heavier than one API call loop; a fair no-code option)
+- one big DECISIONS.md holding observations too (it reached 600+ lines and mixed facts
+  with choices)
+- leaving DECISIONS_v1.md at the root (two decision logs side by side invites reading the old one)
 
 **D-docs - dbt docs is how people browse the models (documented in the README, not hosted).**
 `dbt docs generate` + `dbt docs serve` build a local website from the same YAML descriptions
@@ -284,34 +169,16 @@ a text block from a real run instead of an image, so it can be read and copied.
 Rejected: videos committed to the repo (large files); screenshots of the run output (text is
 clearer); embedding images from outside the repo (could break later).
 
-**D-findings-snapshot - FINDINGS.md is frozen at Mon 9 Nov 2026 (run 20261109T135405Z).**
-The data is live, so numbers re-run later drift as statuses change. The header states the
-as-of date and load time, and the appendix gives the `as_of_date` command plus the SQL behind
-every number, so they can be traced. In the interview a fresh live run shows "today" next to it.
-Rejected: regenerating it on interview day (fresher, but the text would need checking again).
-
-**D-morning-sample - Morning view sample: the 5 clinics with the most no-shows, sorted by count.**
-On a single day the numbers are too small to rank clinics by rate: on Sat 7 Nov, 27 of 38
-clinics had 0 no-shows (a "best 3" would be an arbitrary pick from a tie), and the highest
-rates were 1 no-show out of 3 appointments (33%). Sorting by number of no-shows (then awaiting
-status) answers "who needs a call today?". The 3 worst + 3 best comparison goes in the
-ranking finding instead, where 28 settled days give several hundred appointments per clinic.
-Rejected: 3 worst + 3 best by rate on one day (noise); all 38 clinics (too long for a summary).
-
-**D-fte - Lost vet hours are also shown as full-time vets, assuming a 37-hour week.**
-525 hours in 28 days / 4 weeks = 131 hours a week; / 37 hours = about 3.5 full-time vets.
-Worded as "the equivalent of about 3.5 full-time vets' booked time".
-Assumptions: 37 hours is the standard Danish full-time week (Sweden's is 40, giving 3.3, so
-"about 3.5" still holds); it counts booked appointment time only, not admin or breaks.
-Rejected: hours only (accurate, but less meaningful to Karin at a glance).
-
-**D-findings-staging - Service and weekday findings are queried outside the marts for now.**
-Findings 4 (service) and 5 (weekday) come from SQL on staging and the daily mart, kept as dbt
-analyses (D-analyses) and linked from the FINDINGS.md appendix. They are the most actionable findings (where reminders pay off), so
-they are included even though no mart holds them yet.
-With more time: a mart for them, so they are built and tested every run (see Next steps).
-Rejected: leaving them out (loses the clearest "what to do"); building a mart now (more work
-than two numbers justify in this slice).
+## Frequency
+**D-batch - Daily batch, not real-time.**
+Mette's question is about yesterday, every morning. Real-time adds cost and
+running complexity for a two-person IT team, and the API is slow to wake up.
+No-shows are recorded about a day late (D-settled), so real-time would only show wrong
+numbers faster. It's also cheaper, which matters for Karin's cost test.
+Rejected: real-time or streaming (Anders, Head of Digital, asked for it; it adds cost and no
+usable accuracy for this question).
+Change if: Nordvet adds a use case that acts within the hour, such as reassigning a vet when
+a patient doesn't arrive.
 
 ## Ingestion
 **D-deleted - Always request `include_deleted=true`; keep `deleted_at`; drop deleted rows in staging.**
@@ -549,7 +416,169 @@ Rejected:
 - `dbt run` then `dbt test` separately: a bad staging model would feed the marts before tests run
 - separate manual steps (easy to run out of order; D-entry)
 
-## API quirks found
+## Metric
+**D-formula - no-show rate = no_show / (completed + no_show).**
+Cancelled appointments are excluded, because a cancelled slot isn't a no-show.
+
+**D-metric - Unresolved past `booked` rows.**
+Yesterday is shown per clinic as confirmed no-shows plus a separate
+"awaiting status" count. The headline clinic ranking uses a rate over settled days.
+The lower/upper range is kept as two columns:
+- lower = no_show / (completed + no_show + awaiting): every awaiting appointment turns out completed
+- upper = (no_show + awaiting) / (completed + no_show + awaiting): every awaiting one is a no-show
+Why: completions are recorded within hours but no-shows about a day later, so at 8am
+yesterday's no-shows are mostly still `booked` (API notes 14-15). On 5 Nov at 8am: 1.8%
+confirmed vs 8.9% if every unresolved booking became a no-show. A rate for yesterday alone
+would mislead Mette; counts that can be read at a glance would not. Settled days give a
+stable ranking.
+Rejected:
+- counting unresolved bookings as no-shows (overstates: most turn out completed)
+- ignoring them (understates, and hides the gap)
+- a range as the only view (too wide on a single day to tell clinics apart)
+Change if: Mette would rather wait a few days for final numbers, or VetOne offers a faster
+way to record no-shows.
+
+**D-settled - The last 3 days count as unsettled.**
+They are left out of the clinic-ranking rate.
+Precisely: a day is settled when `days_ago > 3` (as of today, Mon 9 Nov: 5 Nov and earlier).
+In practice the earliest settled day is read about 3.5-4 days after its appointments.
+The 3 is a dbt variable (`unsettled_days` in dbt_project.yml), so it can be raised without
+touching SQL if more history shows no-shows arrive later.
+Why 3: 92.3% of no-shows are recorded within 3 days and 96.1% within 4 (API note 14, which
+has the full lag table, SQLite-era and re-measured). No September day has `booked` rows left,
+and only 3 settled-day appointments were still awaiting a status on 9 Nov (API note 15).
+Known limit: a few no-shows arrive later (the slowest took about 5 days), so the ranking
+slightly understates every clinic's rate.
+Is the lag equal across clinics? (open in the SQLite era, checked 9 Nov) Not exactly: 82.5%
+(Jönköping) to 100% within 3 days, but 93% or more everywhere within 4. The slowest clinics
+have few no-shows (42-70), so part of the spread is noise, and it barely correlates with the
+no-show rate (-0.2). It could move a clinic's rate by a few tenths of a point, not change the
+ranking, where best and worst are 15+ points apart.
+Change if: more history shows the lag getting longer, or a clinic's late recording grows; then
+raise `unsettled_days` to 4.
+Rejected: 1 day (40% of no-shows recorded) or 2 days (81%), measured 9 Nov; 7 days (100%
+recorded, but the ranking would lag a week behind for about 4 points more completeness).
+
+**D-last-open-day - Mette's "yesterday" is the last day any clinic was open (decided 9 Nov).**
+Clinics are closed on Sundays, so on Mondays calendar yesterday has no appointments and the
+view would be empty. `is_last_open_day` marks the most recent day before today with any
+appointments across the network: Saturday on a Monday, the previous day otherwise, and it
+skips public holidays without a holiday calendar. A clinic with no appointments that day
+simply has no row.
+Rejected: strict calendar yesterday (`days_ago = 1`): empty every Monday and after holidays.
+
+**D-ranking-window - Two windows: the recent 28 settled days (ranked), and all settled history.**
+- Recent: the newest 28 settled days (days_ago 4 to 31). The rank uses this, so it reflects
+  what is happening now and Mette can act on it. About 25 appointments per clinic per day
+  gives several hundred per clinic, enough for a stable rate.
+- History: every settled day since `BACKFILL_FROM` (1 Sep), as a baseline, so a clinic whose
+  recent rate jumps can be compared with its own normal.
+- Each window shows its counts (no-shows, completed) next to the rate, so a small sample is
+  visible, plus the network rate and the clinic's gap to it in percentage points.
+- 28 is a dbt variable (`ranking_window_days`).
+Rejected: only the recent window (no baseline); only history (reacts slowly to change).
+
+**D-inactive - Inactive clinics are left out of the ranking but keep their daily history.**
+CL-420 Ystad stays in the daily mart with `is_active = false` (its September data is real)
+and is filtered out of the ranking. `is_active` comes from the latest clinic snapshot, so:
+- a clinic VetOne marks inactive tomorrow drops out of the ranking on the next run, with no
+  code change; its history stays, flagged. The flag shows status *now*, not on that day.
+- `raw_clinics` keeps every snapshot (D-clinics), so the run where it changed is on record.
+- a clinic removed from VetOne entirely fails the `relationships` test (appointments ->
+  clinics), so the run stops loudly instead of silently dropping its appointments.
+- a new clinic appears automatically.
+Rejected: dropping inactive clinics everywhere (loses real history); ranking them (a closed
+clinic in Mette's list is noise).
+
+**D-money - Money lost = booked vet minutes lost to no-shows (`duration_minutes`), not kroner.**
+VetOne has no prices or fees, so Karin's "where are we losing money" is measured in vet time:
+the booked minutes of every no-show. Shown in minutes and hours per clinic-day and per clinic.
+Turning it into kroner needs Nordvet's average revenue per vet hour; that's a single
+multiplication once they give it to us.
+Rejected: guessing a price per service (would present made-up kroner as fact).
+
+**D-late-cancellations - Late cancellations stay "cancelled" for now; flagged to discuss with Nordvet.**
+Late-recorded cancellations *are* picked up: cancelling sets `updated_at` equal to
+`cancelled_at` (all 3,782 cancelled rows), so the next run fetches the change and the marts
+recalculate. They arrive within hours (latest 5h), well inside the 3-day settled rule.
+The open question is what they mean: 766 of 3,782 cancellations (20%) were recorded *after*
+the appointment had started (median 2.8h, 90% within 4.6h). These are probably "the patient
+didn't come and reception marked it cancelled", i.e. no-shows in practice. Counting them would
+raise no-shows from 3,474 to about 4,240 (+22%).
+Decision: keep the fixed metric (cancelled excluded) and leave them out for this first slice.
+This goes beyond what was asked, and changing the definition is Nordvet's call, not ours.
+To discuss with Mette, then possibly add later (see Next steps).
+Rejected for now:
+- counting them as no-shows (changes the agreed metric without the client)
+- adding a `late_cancellations` column now (useful, but not requested; better built once
+  Nordvet has said what a late cancellation means)
+
+**D-fields - patient_ref and vet_id not stored; updated_at, cancelled_at, deleted_at and created_at kept.**
+`patient_ref` and `vet_id` are dropped in Python before loading, so they never reach disk.
+`created_at` is kept although nothing uses it yet: it is cheap and allows a later
+lead-time analysis (how far ahead was the booking made, and do late bookings no-show more?).
+Why not `patient_ref`: it's patient-related, and a clinic-level no-show view doesn't need it.
+Why not `vet_id`: vet-level reporting is out of scope for Mette's question.
+Change if: Nordvet wants vet-level reporting, or wants to dig into an outlier clinic (e.g. is
+Aarhus C's 24% driven by one vet's diary?). Then add `vet_id` to the loader and re-run the
+backfill; `patient_ref` should stay out unless there's a clear, agreed purpose.
+
+## Findings
+**D-findings - FINDINGS.md short list for Mette.**
+No slides, and no Power BI report unless time allows.
+Parquet/CSV only as an optional export of the final view for Power BI.
+
+**D-findings-snapshot - FINDINGS.md is frozen at Mon 9 Nov 2026 (run 20261109T135405Z).**
+The data is live, so numbers re-run later drift as statuses change. The header states the
+as-of date and load time, and the appendix gives the `as_of_date` command plus the SQL behind
+every number, so they can be traced. In the interview a fresh live run shows "today" next to it.
+Rejected: regenerating it on interview day (fresher, but the text would need checking again).
+
+**D-morning-sample - Morning view sample: the 5 clinics with the most no-shows, sorted by count.**
+On a single day the numbers are too small to rank clinics by rate: on Sat 7 Nov, 27 of 38
+clinics had 0 no-shows (a "best 3" would be an arbitrary pick from a tie), and the highest
+rates were 1 no-show out of 3 appointments (33%). Sorting by number of no-shows (then awaiting
+status) answers "who needs a call today?". The 3 worst + 3 best comparison goes in the
+ranking finding instead, where 28 settled days give several hundred appointments per clinic.
+Rejected: 3 worst + 3 best by rate on one day (noise); all 38 clinics (too long for a summary).
+
+**D-fte - Lost vet hours are also shown as full-time vets, assuming a 37-hour week.**
+525 hours in 28 days / 4 weeks = 131 hours a week; / 37 hours = about 3.5 full-time vets.
+Worded as "the equivalent of about 3.5 full-time vets' booked time".
+Assumptions: 37 hours is the standard Danish full-time week (Sweden's is 40, giving 3.3, so
+"about 3.5" still holds); it counts booked appointment time only, not admin or breaks.
+Rejected: hours only (accurate, but less meaningful to Karin at a glance).
+
+**D-findings-staging - Service and weekday findings are queried outside the marts for now.**
+Findings 4 (service) and 5 (weekday) come from SQL on staging and the daily mart, kept as dbt
+analyses (D-analyses) and linked from the FINDINGS.md appendix. They are the most actionable findings (where reminders pay off), so
+they are included even though no mart holds them yet.
+With more time: a mart for them, so they are built and tested every run (see Next steps).
+Rejected: leaving them out (loses the clearest "what to do"); building a mart now (more work
+than two numbers justify in this slice).
+
+## Production (Azure)
+**D-azure - Production target: Container Apps Job + Key Vault + Azure SQL Database + Power BI.**
+Described in the README, not built (decided 9 Nov).
+- Azure SQL Database (Basic, about $5/month): Emil's team already knows SQL Server tools,
+  Power BI connects natively, and the data is tiny (tens of MB). The dbt models move with the
+  `dbt-sqlserver` adapter; `qualify`, `timezone()`, `strftime` and `datediff` need T-SQL
+  rewrites, and the raw loader switches from DuckDB to an Azure SQL connection.
+- Container Apps Job: runs the unchanged `python run_pipeline.py` daily. A 2-minute run uses
+  about 1% of the free monthly grant (180,000 vCPU-seconds), so about $0.
+- Key Vault for the VetOne credentials, passed in as environment variables (no code change).
+- Prices checked by web search on 9 Nov 2026 (list prices, USD): Azure SQL Basic about $5/month
+  (up to ~$20 by region), Power BI Pro $14/user/month (raised from $10 in 2025; included in
+  Microsoft 365 E5). Infrastructure total about $5-25/month.
+Rejected:
+- DuckDB file on Azure storage with marts exported as Parquet (cheapest, no SQL rewrite, but
+  Power BI reads files rather than a database and it is less familiar to Emil's team)
+- Microsoft Fabric (only sensible if Nordvet already pays for Fabric capacity)
+- Azure Functions (a timer trigger works, but running dbt inside Functions is awkward; the job
+  runs the same command as the laptop)
+- Azure Data Factory for the extract (heavier than one API call loop; a fair no-code option)
+
+## API observations
 Moved to [docs/vetone_api_notes.md](docs/vetone_api_notes.md) on 9 Nov: what the API and the
 data actually do, each with what was observed, the evidence, the impact and how it's handled.
 This file keeps the choices; that one keeps the observations.
