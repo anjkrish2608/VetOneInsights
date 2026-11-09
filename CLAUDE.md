@@ -1,6 +1,6 @@
 # Nordvet no-show pipeline (Heyra case study)
 
-Read this file and DECISIONS.md before doing anything. Decisions in DECISIONS.md
+Read this file, DECISIONS.md and docs/vetone_api_notes.md before doing anything. Decisions in DECISIONS.md
 are mine; don't change them without asking me first.
 docs/history/DECISIONS_v1.md is the original SQLite-era log, kept as a historical record.
 Never edit its content (it was moved there from the repo root on 9 Nov, unchanged).
@@ -34,7 +34,8 @@ Never edit its content (it was moved there from the repo root on 9 Nov, unchange
 - Changelog mentions include_deleted, vet_id, patient_ref, updated_since timezone offsets.
 - It's a live system: data keeps changing. First call can take ~20s (scales to zero).
 - Expect undocumented behaviour. When you find a quirk, show me the evidence
-  (the raw response) and explain it. I'll log it in DECISIONS.md myself.
+  (the raw response) and explain it. It's logged in docs/vetone_api_notes.md (format
+  under "Documentation: what goes where"), and any choice it leads to in DECISIONS.md.
 
 ## Stack (decided: dbt + DuckDB, don't change without asking)
 - Python: API ingestion only (auth, pagination, append raw rows to DuckDB).
@@ -105,6 +106,7 @@ CLAUDE.md
 requirements.txt
 run_pipeline.py      # single entry point: ingest, then dbt build
 ingestion/
+  __init__.py        # makes ingestion an explicit package
   vetone_client.py   # auth, token refresh, pagination
   load_raw.py        # append raw rows to DuckDB
 nordvet_dbt/
@@ -113,10 +115,40 @@ nordvet_dbt/
   models/staging/
   models/marts/
   tests/             # singular SQL tests (D-singular-tests)
+  analyses/          # SQL behind each FINDINGS.md number (D-analyses)
 data/                # DuckDB file lives here, gitignored
-docs/images/         # README screenshots (D-images)
+docs/
+  vetone_api_notes.md  # API and data observations (see Documentation below)
+  history/DECISIONS_v1.md  # SQLite-era log, historical, never edit its content
+  images/            # README screenshots (D-images)
 ```
 Don't add folders or files beyond this without asking.
+
+## Documentation: what goes where
+| File | What goes in it | Question it answers |
+|---|---|---|
+| `docs/vetone_api_notes.md` | Quirks: what the API and data actually do vs. what the docs say | "What did you find?" |
+| `DECISIONS.md` | Choices, the alternatives rejected and why | "Why did you build it this way?" |
+| `README.md` → Assumptions | A short summary that points to both | What the brief explicitly asks for |
+| `FINDINGS.md` | Results for Mette, with each number traceable to an analysis | "What should Mette do?" |
+
+**Every observation** in `docs/vetone_api_notes.md` has:
+- **Observed:** what the API or data does
+- **Evidence:** the call, raw response or numbers that show it
+- **Impact:** what it would break or distort if ignored
+- **Handled:** what the pipeline does about it, with the D-… decision it led to
+(or "not handled yet" and why). Unconfirmed behaviour goes under "Not yet observed".
+
+**Every decision** in `DECISIONS.md` has an id (D-…) and at minimum:
+- **What:** the choice, in the bold title line
+- **Why:** the reason, with evidence where there is some
+- **Rejected:** the alternatives considered, each with why not
+Add when relevant (recommended, based on the usual ADR format):
+- **Trade-offs:** what this choice costs or makes harder
+- **Change if:** the condition that would reopen it
+- **Date** if it was changed, and what it replaced
+Keep the two apart: a fact about VetOne goes in the API notes; a choice that could have
+gone another way goes in DECISIONS.md. Link them both ways (note -> D-…, D-… -> note).
 
 ## README requirements (from the brief; must cover all four)
 1. How to run it: prerequisites, setup (venv, pip install, .env), one command to run,
@@ -127,7 +159,7 @@ Don't add folders or files beyond this without asking.
    including rough cost and who operates it.
 Also include: a one-paragraph overview written for the client, a simple text diagram
 of the flow (API -> raw -> staging -> mart -> Power BI), the data model (models and
-grain), and a pointer to DECISIONS.md and FINDINGS.md.
+grain), and a pointer to DECISIONS.md, FINDINGS.md and docs/vetone_api_notes.md.
 - Never include credentials. Write for a reader who has never seen the project.
 - Draft the README; I will edit it into my own words. Keep it short (aim for 1-2 screens
   per section, not an essay).
