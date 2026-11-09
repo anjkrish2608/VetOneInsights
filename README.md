@@ -96,8 +96,36 @@ steps: 4 models and 37 tests.)
 **See the output:**
 
 - **The two report tables** live in `data/nordvet.duckdb`: `mart_clinic_daily_noshows` and
-  `mart_clinic_noshow_ranking`. Open them in any DuckDB client (e.g. DBeaver), or from Python:
-  `.venv\Scripts\python -X utf8 -c "import duckdb; duckdb.connect('data/nordvet.duckdb', read_only=True).sql('select * from mart_clinic_noshow_ranking order by rank_recent').show()"`
+  `mart_clinic_noshow_ranking`. The quickest way to look at them is `dbt show`, from the repo
+  root after a run. It shows 5 rows unless you add `--limit`, and cuts off wide columns, so
+  pick the columns you need. `{{ ref('…') }}` is dbt's way of naming a model.
+
+  Mette's morning view (last open day, most no-shows first, D-morning-sample):
+
+  ```bash
+  .venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --limit 50 --inline "select clinic_name, appointments, no_shows, awaiting_status, round(100 * no_show_rate, 1) as rate_pct from {{ ref('mart_clinic_daily_noshows') }} where is_last_open_day order by no_shows desc, awaiting_status desc"
+  ```
+
+  The ranking (worst no-show rate first over the recent settled days, D-ranking-window):
+
+  ```bash
+  .venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --limit 50 --inline "select rank_recent, clinic_name, round(100 * no_show_rate_recent, 1) as rate_pct, no_shows_recent, lost_vet_hours_recent from {{ ref('mart_clinic_noshow_ranking') }} order by rank_recent"
+  ```
+
+  Where the most vet time is lost (for Karin: total hours, so busy clinics rank higher, D-money):
+
+  ```bash
+  .venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --limit 50 --inline "select clinic_name, lost_vet_hours_recent, no_shows_recent, round(100 * no_show_rate_recent, 1) as rate_pct, rank_recent from {{ ref('mart_clinic_noshow_ranking') }} order by lost_vet_hours_recent desc"
+  ```
+
+  Any number in FINDINGS.md, through its analysis file (see its appendix):
+
+  ```bash
+  .venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --select findings_01_morning_total
+  ```
+
+  For every column at full width, open the file in a DuckDB client (e.g. DBeaver), or use
+  Python: `.venv\Scripts\python -X utf8 -c "import duckdb; duckdb.connect('data/nordvet.duckdb', read_only=True).sql('select * from mart_clinic_noshow_ranking order by rank_recent').show()"`
   (`-X utf8` lets Windows print the table borders and Danish/Swedish letters.)
 - **Browsable documentation and lineage graph** (after a run has finished, since DuckDB allows
   one writer at a time):
