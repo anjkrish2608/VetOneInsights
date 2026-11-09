@@ -7,6 +7,12 @@ profile: nordvet
 model-paths: ["models"]
 clean-targets: ["target", "dbt_packages"]
 
+vars:
+  # Metric settings (D-settled, D-ranking-window). Change here, not in the SQL.
+  unsettled_days: 3          # the last 3 days are unsettled: no-shows are recorded late
+  ranking_window_days: 28    # recent ranking window, counted back from the newest settled day
+  # as_of_date: "2026-11-09" # optional; default is today in Copenhagen (D-as-of)
+
 flags:
   send_anonymous_usage_stats: false  # client data project: no telemetry
 

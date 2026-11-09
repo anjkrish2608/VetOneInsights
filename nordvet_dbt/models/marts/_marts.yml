@@ -1,0 +1,128 @@
+version: 2
+
+models:
+  - name: mart_clinic_daily_noshows
+    description: >
+      One row per clinic per local day, for every day before the as-of date (default:
+      today in Copenhagen). Mette's morning view is the rows where is_last_open_day
+      is true (on a Monday that is Saturday, since clinics are closed on Sundays).
+      Recent days are unsettled: no-shows are recorded ~1 day late, so the confirmed
+      rate is shown with a lower and upper bound. Days with no appointments
+      (e.g. Sundays) have no row.
+    columns:
+      - name: clinic_day_id
+        description: Key, clinic_id + date, e.g. CL-965_2026-11-08.
+        data_tests: [unique, not_null]
+      - name: clinic_id
+        description: VetOne clinic id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_vetone__clinics')
+                field: clinic_id
+      - name: clinic_name
+        description: Clinic name.
+        data_tests: [not_null]
+      - name: country
+        description: DK or SE.
+      - name: is_active
+        description: >
+          The clinic's status now (from the latest clinic snapshot), not on that day.
+          Inactive clinics keep their history here but are left out of the ranking.
+      - name: appointment_date
+        description: The clinic's local date of the appointments.
+        data_tests: [not_null]
+      - name: as_of_date
+        description: The date the mart was built for ("today"); same on every row.
+      - name: days_ago
+        description: Days between appointment_date and as_of_date; 1 = yesterday.
+        data_tests: [not_null]
+      - name: is_settled
+        description: >
+          True when the day is older than the unsettled window (default 3 days), so
+          almost all no-shows have been recorded. Only settled days feed the ranking.
+      - name: is_last_open_day
+        description: >
+          True for the most recent day before as_of_date with any appointments in the
+          network. This is Mette's "yesterday": Saturday on a Monday, the previous day
+          otherwise, and it skips public holidays automatically.
+      - name: appointments
+        description: All appointments that day, any status (deleted ones excluded).
+        data_tests: [not_null]
+      - name: completed
+        description: Appointments marked completed.
+      - name: no_shows
+        description: Appointments marked no_show (confirmed no-shows).
+      - name: cancelled
+        description: Cancelled appointments. Excluded from the no-show rate.
+      - name: awaiting_status
+        description: >
+          Past appointments still marked booked: the outcome isn't recorded yet.
+          Shown separately so the confirmed count isn't mistaken for the final one.
+      - name: no_show_rate
+        description: Confirmed rate, no_shows / (completed + no_shows). Null if both are 0.
+      - name: no_show_rate_lower
+        description: Rate if every awaiting appointment turns out completed.
+      - name: no_show_rate_upper
+        description: Rate if every awaiting appointment turns out a no-show.
+      - name: lost_vet_minutes
+        description: >
+          Booked vet minutes lost to no-shows (sum of duration_minutes). Stands in for
+          lost revenue, since VetOne has no prices (D-money).
+
+  - name: mart_clinic_noshow_ranking
+    description: >
+      One row per active clinic, ranked by no-show rate over settled days only (days
+      older than the unsettled window). Two windows: "recent" = the newest settled days
+      (default 28), used for the rank; "history" = every settled day loaded since
+      BACKFILL_FROM, as a stable baseline. Inactive clinics are left out.
+    columns:
+      - name: rank_recent
+        description: 1 = highest no-show rate in the recent window. Ties share a rank.
+        data_tests: [not_null]
+      - name: clinic_id
+        description: VetOne clinic id. One row per active clinic.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_vetone__clinics')
+                field: clinic_id
+      - name: clinic_name
+        description: Clinic name.
+      - name: country
+        description: DK or SE.
+      - name: no_show_rate_recent
+        description: no_shows / (completed + no_shows) over the recent settled window.
+      - name: no_shows_recent
+        description: Confirmed no-shows in the recent window (shows how big the sample is).
+      - name: completed_recent
+        description: Completed appointments in the recent window.
+      - name: lost_vet_minutes_recent
+        description: Booked vet minutes lost to no-shows in the recent window (D-money).
+      - name: lost_vet_hours_recent
+        description: Same, in hours (1 decimal).
+      - name: network_rate_recent
+        description: No-show rate across all active clinics in the recent window.
+      - name: vs_network_pp_recent
+        description: Clinic rate minus network rate, in percentage points (+ = worse).
+      - name: no_show_rate_history
+        description: no_shows / (completed + no_shows) over every settled day loaded.
+      - name: no_shows_history
+        description: Confirmed no-shows over the whole history window.
+      - name: completed_history
+        description: Completed appointments over the whole history window.
+      - name: lost_vet_minutes_history
+        description: Vet minutes lost to no-shows over the whole history window.
+      - name: lost_vet_hours_history
+        description: Same, in hours (1 decimal).
+      - name: network_rate_history
+        description: No-show rate across all active clinics over the history window.
+      - name: vs_network_pp_history
+        description: Clinic history rate minus network history rate, in percentage points.
+      - name: history_from
+        description: First settled day with appointments for this clinic.
+      - name: settled_until
+        description: Newest settled day included (the end of both windows).
