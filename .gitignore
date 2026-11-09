@@ -228,3 +228,10 @@ data/
 *.db
 *.sqlite
 *.pdf
+
+# dbt build output and local user file
+nordvet_dbt/target/
+nordvet_dbt/dbt_packages/
+nordvet_dbt/logs/
+nordvet_dbt/.user.yml
+logs/

@@ -47,6 +47,16 @@ PowerShell, Azure Data Factory.
 - Production story: Azure SQL or Fabric, with Power BI on top.
 
 ## Tooling and repo structure
+**D-python - Python 3.13 for the project venv (decided 9 Nov).**
+dbt-duckdb does not install on Python 3.15: its dependency pyyaml has no ready-made package
+for 3.15 yet, and building it needs Microsoft C++ Build Tools. 3.13 installs cleanly with
+dbt-core 1.12.6, dbt-duckdb 1.11.1 and duckdb 2.0.0, and meets the 3.11+ requirement.
+Installed with the Python install manager (`py install 3.13`); `.venv` rebuilt on it.
+Rejected:
+- staying on 3.15 and installing C++ Build Tools (~6 GB, more setup risk on the demo laptop,
+  and other dbt dependencies could break next)
+- the 3.10 already on the laptop (below the 3.11+ requirement)
+
 **D-lint - ruff for formatting and linting.**
 One fast tool instead of three.
 Rejected: black + flake8 + isort (same job, more setup), no linter (inconsistent code at handover).

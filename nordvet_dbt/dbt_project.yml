@@ -1,0 +1,18 @@
+# Nordvet no-show models: raw (loaded by Python) -> staging -> marts.
+# Run from the repo root:  dbt build --project-dir nordvet_dbt --profiles-dir nordvet_dbt
+name: nordvet
+version: "1.0.0"
+profile: nordvet
+
+model-paths: ["models"]
+clean-targets: ["target", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false  # client data project: no telemetry
+
+models:
+  nordvet:
+    staging:
+      +materialized: view   # thin cleanup layer; always reflects the latest raw rows
+    marts:
+      +materialized: table  # what Power BI / Mette reads; built once per run
