@@ -136,6 +136,50 @@ Rejected:
 - the default limit of 100 (5x more calls on a rate-limited API)
 - open-ended `from` or `to` (unpredictable size; one test pulled 60,000 rows by accident)
 
+**D-incremental - Daily run uses `updated_since` = the highest `updated_at` already in raw.**
+The watermark is read from the data, not from the clock or a "last run" record, so a failed
+run is simply picked up again by the next one, and laptop/API clock differences don't matter.
+`updated_since` ignores the default 7-day window, so late status changes on older appointments
+are caught (9 Nov: rows scheduled 28 Oct returned because their status changed on 2 Nov).
+The boundary is inclusive and `updated_at` is mostly whole minutes, so each run re-fetches a
+few rows it already has. That is safe: raw is append-only and staging keeps one row per id.
+Missing a row would be worse than fetching it twice, so no attempt to shave off the overlap.
+Rejected:
+- a fixed re-pull window, e.g. last 14 days (misses changes to older appointments, more calls)
+- a full reload every day (about 60,000 rows and hundreds of calls)
+- a separate "last run" table (one more thing to maintain; the data already holds the answer)
+- starting one second after the watermark (could miss rows written in that same minute)
+
+**D-validate - Python checks its own request parameters before calling the API.**
+The API accepts some bad input with 200 OK and quietly returns the wrong thing:
+- `from` after `to` -> 0 rows, no error (the run would "succeed" with an empty day)
+- `include_deleted=1` or `yes` -> flag ignored (deleted rows would go missing)
+- `to` without `from` -> all history (a daily run could turn into a 60,000-row pull)
+- `limit` above 500 -> silently capped
+So: `include_deleted` is hard-coded to the string "true" in one place; `from` <= `to` and
+"both or neither" are checked before calling; a backfill returning 0 rows logs a warning.
+Plain `if` statements that fail with a clear message.
+Rejected:
+- trusting the API to reject bad input (it doesn't in these cases)
+- a validation library such as pydantic (too much to explain for three or four checks)
+
+**D-errors - Match the response to the error type.**
+- Token: fetch a fresh one at the start of each run, and again on a 401, then retry that call once.
+  Tokens last exactly 60 minutes (decoded from the token's `exp`); the token response doesn't say so.
+  A daily run fits easily; only the first backfill could cross the hour. Only one retry, because
+  a second 401 means the problem isn't expiry (e.g. a rotated secret), and repeated logins could
+  lock the account.
+- 429: wait exactly the `Retry-After` seconds, then retry. Seen values: 1-12 seconds.
+- 500 ("temporary error, please retry"): retry up to 4 times with 2/4/8/16s pauses, then fail
+  loudly and leave the previous data as it was. About 1 in 15 calls hit one on 9 Nov; all
+  succeeded on retry.
+- Other 4xx: never retry; the request itself is wrong, so fail at once with the message.
+One small function with a loop, no retry framework.
+Rejected:
+- refreshing early by reading `exp` (relies on an undocumented token format)
+- treating 429 like other 4xx and failing (broke the SQLite-era history pull)
+- tenacity / urllib3 Retry (extra dependency, harder for Emil's team to read)
+
 ## API quirks found
 (Log each one here: what you saw, the evidence, what you decided to do about it.)
 
