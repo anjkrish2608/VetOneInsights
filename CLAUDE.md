@@ -42,7 +42,8 @@ Never edit it.
 - dbt-duckdb: all transformations and tests. Layers: sources (raw) -> staging -> marts.
 - Raw layer is append-only. Staging dedupes to the latest updated_at per appointment id.
 - Daily batch, not real-time.
-- This replaced an earlier SQLite + SQL views plan; earlier SQLite work stays on main.
+- This replaced an earlier SQLite + SQL views plan. The SQLite work is in main's history
+  before the dbt-duckdb merge, and its decisions are in DECISIONS_v1.md.
 - Fallback: if dbt blocks progress, use plain SQL views in DuckDB. Ask me first.
 
 ## Metric decisions (fixed)
@@ -132,10 +133,12 @@ grain), and a pointer to DECISIONS.md and FINDINGS.md.
   per section, not an essay).
 
 ## Git workflow
-- All dbt + DuckDB work happens on the branch `dbt-duckdb`. Check you're on it
+- The dbt + DuckDB work was built on the branch `dbt-duckdb` and merged into `main` on
+  9 Nov 2026 with a merge commit, so the pivot from SQLite stays visible in main's
+  history (D-branch). The local `dbt-duckdb` branch was then deleted.
+- Now that the branch is merged, work directly on `main`. Check you're on it
   (`git branch --show-current`) before making changes; stop and tell me if not.
-- `main` holds the earlier SQLite plan. Don't commit to main, and don't merge into
-  main unless I ask. The branch history is meant to show the pivot clearly.
+- Use a short-lived branch instead only if I ask for one, e.g. for a bigger or riskier change.
 - Small commits, one working step each, with messages that say what and why
   (e.g. "Add raw appointments ingestion with cursor pagination").
 - Don't rewrite history (no rebase, squash or amend of pushed commits).
