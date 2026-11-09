@@ -7,7 +7,7 @@ Each entry: what I chose, why, and what I rejected.
 - **Decision** = the bold title line (what I chose)
 - **Context** = why: the situation and evidence, linked to [docs/vetone_api_notes.md](docs/vetone_api_notes.md) where it came from the API
 - **Rejected** = the options I considered and why not
-- **Consequences** = trade-offs and "Change if", where relevant
+- **Consequences** = what the choice costs ("Trade-offs:") and what would reopen it ("Change if:")
 - **Status** = Accepted unless the entry says "changed" (with a date) or "superseded"
 
 Entries marked `> **REVIEW:**` are missing a required part or have a thin "why"; search for
@@ -37,10 +37,14 @@ Added on top: `data/` (API pulls and the database: the brief asks for no data du
 Change if: reviewers need a small sample file, in which case add an exception for that one file.
 
 **D2 - No license.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 Rejected: MIT and others. A case submission doesn't need one and the work stays mine.
 Note: the repo has to open without an invite, so make it public (or zip it) at submission.
 
 **D-branch - The pivot to dbt + DuckDB is built on a `dbt-duckdb` branch.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 `main` keeps the earlier SQLite plan until the new version runs end to end, then gets merged.
 Keeping the switch visible in the history shows a deliberate change of direction.
 Merged into `main` on 9 Nov 2026, once the pipeline ran end to end from a clean start, with a
@@ -53,6 +57,8 @@ Rejected:
 
 ## Language
 **D-lang - Python for ingestion (decided 9 Nov; was provisional).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 Python handles only the API part: login, paging, retries, token refresh and appending raw rows.
 Everything after that is SQL in dbt. dbt has no way to call an API, so something has to do
 this step. In Python it is about 200 lines of plain functions that Emil's team can read, and
@@ -94,6 +100,9 @@ Rejected:
 
 ## Tooling and repo structure
 **D-python - Python 3.13 for the project venv (decided 9 Nov).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API note [20](docs/vetone_api_notes.md#20-dbt-duckdb-does-not-install-on-python-315).
 dbt-duckdb does not install on Python 3.15: its dependency pyyaml has no ready-made package
 for 3.15 yet, and building it needs Microsoft C++ Build Tools. 3.13 installs cleanly with
 dbt-core 1.12.6, dbt-duckdb 1.11.1 and duckdb 2.0.0, and meets the 3.11+ requirement.
@@ -104,6 +113,8 @@ Rejected:
 - the 3.10 already on the laptop (below the 3.11+ requirement)
 
 **D-dbt-v1 - Stay on dbt Core v1 (pinned 1.12.6), not dbt v2.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 dbt now announces v2 as the default for new installations. dbt-duckdb is built for v1,
 and nearly all documentation, examples and answers online are for v1, which is what
 Emil's team will search for after handover. The models are plain SQL + YAML either way.
@@ -111,16 +122,22 @@ Rejected: dbt v2 (newer, but the adapter support and know-how are thinner; upgra
 is a documented path).
 
 **D-lint - ruff for formatting and linting.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 One fast tool instead of three.
 Rejected: black + flake8 + isort (same job, more setup), no linter (inconsistent code at handover).
 
 **D-profiles - dbt profiles.yml committed in the repo.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 DuckDB needs no credentials, so there's nothing secret in it, and a fresh clone runs
 with no extra setup.
 Rejected: the dbt default of `~/.dbt/profiles.yml` (a reviewer or Emil wouldn't have it,
 so the first run would fail).
 
 **D-entry - One entry point, `run_pipeline.py` (ingest, then `dbt build`).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 One command for the live demo and for whoever schedules it later.
 Rejected:
 - Makefile (awkward on Windows, which Nordvet's IT likely uses)
@@ -128,6 +145,9 @@ Rejected:
 - separate manual steps (easy to run out of order)
 
 **D-tests - dbt tests are the only automated tests for this slice.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API note [17](docs/vetone_api_notes.md#17-data-quality-is-clean).
 - unique + not_null on keys
 - accepted_values on status
 - relationships from appointments to clinics
@@ -136,6 +156,8 @@ Rejected for now: pytest on the Python code (useful, but lower priority than dat
 in a 4-5 hour slice; it's on the next-steps list).
 
 **D-config - Settings and credentials from environment variables (.env + python-dotenv).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 .env.example ships with placeholders only.
 Rejected:
 - hard-coded values (credentials would leak into git)
@@ -143,12 +165,16 @@ Rejected:
 - Azure Key Vault (right for production, overkill on a laptop; it's in the Azure story)
 
 **D-logging - Python logging module, with row counts and run time per step.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 > **REVIEW:** thin Why: only the rejected option is given. Possible why: CLAUDE.md asks
 > for rows fetched, rows loaded and time taken; log levels (INFO/WARNING/ERROR) let a failed
 > run stand out; the same lines go to Azure Monitor in production (D-azure).
 Rejected: print statements (can't be filtered or sent to Azure Monitor later).
 
 **D-structure - Flat, small repo: `ingestion/`, `nordvet_dbt/`, `data/` (gitignored), `docs/`.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 The structure mirrors the flow, so Emil can find things. `ingestion/` has an `__init__.py`,
 so it's an explicit Python package rather than relying on Python's implicit namespace packages.
 Documentation is split by the question each file answers (updated 9 Nov):
@@ -168,6 +194,8 @@ Rejected:
 - leaving DECISIONS_v1.md at the root (two decision logs side by side invites reading the old one)
 
 **D-docs - dbt docs is how people browse the models (documented in the README, not hosted).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 `dbt docs generate` + `dbt docs serve` build a local website from the same YAML descriptions
 and tests the pipeline uses: every model, column and test, plus the lineage graph from raw to
 marts. The documentation can't drift from the code, and there's no separate wiki to maintain.
@@ -176,6 +204,8 @@ Rejected for now: hosting the docs as a static site in Azure (small next step); 
 data dictionary (would go out of date).
 
 **D-images - Screenshots live in `docs/images/` (folder added 9 Nov, approved).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 Two PNGs taken from `dbt docs`: the lineage graph (raw -> staging -> marts) and the daily
 mart's documentation page. GitHub shows them inline in the README. Terminal output is shown as
 a text block from a real run instead of an image, so it can be read and copied.
@@ -195,6 +225,9 @@ a patient doesn't arrive.
 
 ## Ingestion
 **D-deleted - Always request `include_deleted=true`; keep `deleted_at`; drop deleted rows in staging.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API note [1](docs/vetone_api_notes.md#1-deleted-appointments-are-hidden-by-default).
 Without the flag, deleted appointments silently disappear from the API. Raw is append-only,
 so a row loaded before it was deleted would otherwise stay in the counts forever.
 With the flag, deleted rows come back with a `deleted_at` timestamp and a normal-looking status.
@@ -207,6 +240,9 @@ Rejected:
 - a periodic full reload to catch deletions (heavier on the API, and the flag makes it unnecessary)
 
 **D-backfill - `limit=500`; first run is a one-off backfill with `from` and `to` always sent together.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API notes [6](docs/vetone_api_notes.md#6-leaving-out-from-or-to-changes-the-window-a-lot), [7](docs/vetone_api_notes.md#7-limit-is-silently-capped-at-500), [18](docs/vetone_api_notes.md#18-calendar-facts).
 500 is the API's real maximum: higher values are silently capped at 500 (default is 100),
 so 500 means the fewest calls without relying on undocumented behaviour.
 `from` and `to` are both needed because leaving one out changes the window a lot:
@@ -234,6 +270,9 @@ Rejected:
   old bookings that were never updated)
 
 **D-incremental - Daily run uses `updated_since` = the highest `updated_at` already in raw.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API notes [3](docs/vetone_api_notes.md#3-updated_since-drops-the-default-7-day-window), [4](docs/vetone_api_notes.md#4-updated_since-includes-the-boundary-and-updated_at-is-mostly-whole-minutes).
 The watermark is read from the data, not from the clock or a "last run" record, so a failed
 run is simply picked up again by the next one, and laptop/API clock differences don't matter.
 `updated_since` ignores the default 7-day window, so late status changes on older appointments
@@ -248,6 +287,9 @@ Rejected:
 - starting one second after the watermark (could miss rows written in that same minute)
 
 **D-validate - Python checks its own request parameters before calling the API.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API notes [2](docs/vetone_api_notes.md#2-include_deleted-silently-ignores-values-it-doesnt-recognise), [5](docs/vetone_api_notes.md#5-updated_since-timezone-handling), [6](docs/vetone_api_notes.md#6-leaving-out-from-or-to-changes-the-window-a-lot).
 The API accepts some bad input with 200 OK and quietly returns the wrong thing:
 - `from` after `to` -> 0 rows, no error (the run would "succeed" with an empty day)
 - `include_deleted=1` or `yes` -> flag ignored (deleted rows would go missing)
@@ -270,6 +312,9 @@ Rejected:
 - a validation library such as pydantic (too much to explain for three or four checks)
 
 **D-errors - Match the response to the error type.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API notes [9](docs/vetone_api_notes.md#9-tokens-last-60-minutes-but-the-token-response-doesnt-say-so), [10](docs/vetone_api_notes.md#10-transient-errors-and-rate-limits), [13](docs/vetone_api_notes.md#13-the-first-call-is-slow).
 - Token: fetch a fresh one at the start of each run, and again on a 401, then retry that call once.
   Tokens last exactly 60 minutes (decoded from the token's `exp`); the token response doesn't say so.
   A daily run fits easily; only the first backfill could cross the hour. Only one retry, because
@@ -310,11 +355,16 @@ Rejected:
 - saving page by page and resuming (needs a separate progress record; more to explain and maintain)
 
 **D-metadata - Every raw row gets `_loaded_at` and `_run_id`.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 Shows which run loaded which rows ("this run loaded X rows"), and helps trace a bad load.
 Cheap: two columns.
 Rejected: no metadata (simpler, but rows can't be traced back to a run).
 
 **D-clinics - Clinics are re-fetched every run and appended to `raw_clinics`, not overwritten.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API note [11](docs/vetone_api_notes.md#11-39-clinics-not-38-as-the-brief-says).
 The raw layer is append-only for every table (CLAUDE.md), so clinics follow the same rule as
 appointments. Each run adds one full snapshot (39 rows) with `_run_id` and `_loaded_at`;
 staging takes the latest snapshot. It also keeps a history of clinic changes (e.g. a clinic
@@ -324,6 +374,8 @@ rule and loses when a clinic changed).
 
 ## dbt models
 **D-materialization - Staging models are views; marts are tables.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 Staging is a thin cleanup over raw, so a view always shows the latest raw rows and costs
 nothing to store. Marts are what Power BI and Mette read, so they are built once per run as
 tables: fast to query, and a stable copy if a later run fails halfway.
@@ -333,12 +385,17 @@ Rejected:
 - incremental models (not needed at ~50,000 rows; full rebuild takes under a second)
 
 **D-stg-clinics - `stg_vetone__clinics` takes the newest snapshot by `_run_id`.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 `_run_id` is the run's UTC start time (e.g. 20261109T130505Z), so the highest one is the
 latest load. Inactive clinics are kept in staging; the marts decide whether to show them.
 Rejected: latest row per clinic id across all snapshots (would keep a clinic that VetOne
 has removed entirely).
 
 **D-dedupe - `stg_vetone__appointments` keeps the latest version per id, then drops deleted.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API notes [1](docs/vetone_api_notes.md#1-deleted-appointments-are-hidden-by-default), [4](docs/vetone_api_notes.md#4-updated_since-includes-the-boundary-and-updated_at-is-mostly-whole-minutes).
 `qualify row_number() over (partition by id order by updated_at desc, _loaded_at desc) = 1`.
 `_loaded_at` breaks ties when the same version was fetched twice (the inclusive watermark
 overlap, D-incremental). Dedupe happens *before* the deleted filter: if an appointment is
@@ -366,12 +423,17 @@ switch correctly at the 25 Oct clock change (summer and winter both checked).
 Change if: Mette wants one company-wide cut-off time instead.
 
 **D-test-severity - Unknown `service` values warn; unknown `status` values fail the run.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API note [17](docs/vetone_api_notes.md#17-data-quality-is-clean).
 Status drives the no-show metric, so an unexpected status must stop the run before Mette
 sees wrong numbers. A new service type doesn't change the metric, so it should be noticed
 (a warning in the run log) without blocking the morning report.
 Rejected: failing on both (a harmless new service would block the report); no service test.
 
 **D-marts - Two mart tables, at two grains.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 - `mart_clinic_daily_noshows`: one row per clinic per local day, every day before the as-of
   date. Mette's morning view (`is_last_open_day`) and Power BI trends both come from it.
 - `mart_clinic_noshow_ranking`: one row per active clinic, built *from the daily mart*, so the
@@ -384,6 +446,8 @@ Rejected:
 - doing the ranking in Power BI only (the logic would live outside SQL, untested)
 
 **D-as-of - "Today" is a dbt variable, defaulting to today's date in Copenhagen.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 `as_of_date` defaults to `cast(timezone('Europe/Copenhagen', current_timestamp) as date)`;
 `dbt build --vars "{as_of_date: '2026-11-06'}"` rebuilds the marts as of any past morning.
 Both countries share Copenhagen's clock time. Used to reproduce FINDINGS.md numbers, to
@@ -393,6 +457,8 @@ Rejected: plain `current_date` (it's the UTC date in our session, a day behind C
 between midnight and 01:00/02:00).
 
 **D-singular-tests - Three SQL test files in `nordvet_dbt/tests/` (folder added 9 Nov, approved).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 - `assert_noshow_rates_between_0_and_1`: every rate in both marts is between 0 and 1
 - `assert_noshow_rate_bounds_ordered`: lower <= confirmed <= upper on every clinic-day
 - `assert_daily_mart_reconciles_to_staging`: per day, the mart's appointment total equals the
@@ -404,6 +470,9 @@ Rejected: the `dbt_utils` package (a dependency for two or three checks; plain S
 easier for Emil's team to read).
 
 **D-analyses - The SQL behind FINDINGS.md lives in `nordvet_dbt/analyses/` (folder added 9 Nov, approved).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API note [21](docs/vetone_api_notes.md#21-windows-console-and-dbt-show-quirks).
 What: one analysis file per number in FINDINGS.md (11 files, `findings_01_...` to
 `findings_11_...`), linked from its appendix. Run with
 `dbt show --select <name>`.
@@ -418,6 +487,8 @@ Rejected:
   a service/weekday mart is in Next steps for the two that deserve it)
 
 **D-dbt-run - `run_pipeline.py` runs `dbt build` as a subprocess after ingestion.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 `dbt build` runs every model and every test in dependency order, so one command both builds
 and checks the data. It's the same command Emil's team would type themselves. It runs only
 after ingestion has closed its DuckDB connection (DuckDB allows one writer). The dbt next to
@@ -431,6 +502,8 @@ Rejected:
 
 ## Metric
 **D-formula - no-show rate = no_show / (completed + no_show).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 > **REVIEW:** thin Why (one line) and no Rejected options. Possible rejected options:
 > no_show / all appointments (cancellations would dilute the rate), no_show / (completed +
 > no_show + cancelled), counting late cancellations as no-shows (see D-late-cancellations).
@@ -476,6 +549,9 @@ Rejected: 1 day (40% of no-shows recorded) or 2 days (81%), measured 9 Nov; 7 da
 recorded, but the ranking would lag a week behind for about 4 points more completeness).
 
 **D-last-open-day - Mette's "yesterday" is the last day any clinic was open (decided 9 Nov).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API note [18](docs/vetone_api_notes.md#18-calendar-facts).
 Clinics are closed on Sundays, so on Mondays calendar yesterday has no appointments and the
 view would be empty. `is_last_open_day` marks the most recent day before today with any
 appointments across the network: Saturday on a Monday, the previous day otherwise, and it
@@ -484,6 +560,8 @@ simply has no row.
 Rejected: strict calendar yesterday (`days_ago = 1`): empty every Monday and after holidays.
 
 **D-ranking-window - Two windows: the recent 28 settled days (ranked), and all settled history.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 - Recent: the newest 28 settled days (days_ago 4 to 31). The rank uses this, so it reflects
   what is happening now and Mette can act on it. About 25 appointments per clinic per day
   gives several hundred per clinic, enough for a stable rate.
@@ -495,6 +573,9 @@ Rejected: strict calendar yesterday (`days_ago = 1`): empty every Monday and aft
 Rejected: only the recent window (no baseline); only history (reacts slowly to change).
 
 **D-inactive - Inactive clinics are left out of the ranking but keep their daily history.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API note [11](docs/vetone_api_notes.md#11-39-clinics-not-38-as-the-brief-says).
 CL-420 Ystad stays in the daily mart with `is_active = false` (its September data is real)
 and is filtered out of the ranking. `is_active` comes from the latest clinic snapshot, so:
 - a clinic VetOne marks inactive tomorrow drops out of the ranking on the next run, with no
@@ -507,6 +588,8 @@ Rejected: dropping inactive clinics everywhere (loses real history); ranking the
 clinic in Mette's list is noise).
 
 **D-money - Money lost = booked vet minutes lost to no-shows (`duration_minutes`), not kroner.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 VetOne has no prices or fees, so Karin's "where are we losing money" is measured in vet time:
 the booked minutes of every no-show. Shown in minutes and hours per clinic-day and per clinic.
 Turning it into kroner needs Nordvet's average revenue per vet hour; that's a single
@@ -514,6 +597,9 @@ multiplication once they give it to us.
 Rejected: guessing a price per service (would present made-up kroner as fact).
 
 **D-late-cancellations - Late cancellations stay "cancelled" for now; flagged to discuss with Nordvet.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
+Evidence: API note [16](docs/vetone_api_notes.md#16-a-fifth-of-cancellations-are-recorded-after-the-appointment-started).
 Late-recorded cancellations *are* picked up: cancelling sets `updated_at` equal to
 `cancelled_at` (all 3,782 cancelled rows), so the next run fetches the change and the marts
 recalculate. They arrive within hours (latest 5h), well inside the 3-day settled rule.
@@ -544,6 +630,8 @@ backfill; `patient_ref` should stay out unless there's a clear, agreed purpose.
 
 ## Findings
 **D-findings - FINDINGS.md short list for Mette.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 > **REVIEW:** thin Why (it doesn't say why a short list suits Mette) and no labelled
 > Rejected section. Slides and a Power BI report are mentioned below but not as rejected
 > options with a reason (the brief says no slides; a Power BI report was out of time).
@@ -551,12 +639,16 @@ No slides, and no Power BI report unless time allows.
 Parquet/CSV only as an optional export of the final view for Power BI.
 
 **D-findings-snapshot - FINDINGS.md is frozen at Mon 9 Nov 2026 (run 20261109T135405Z).**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 The data is live, so numbers re-run later drift as statuses change. The header states the
 as-of date and load time, and the appendix gives the `as_of_date` command plus the SQL behind
 every number, so they can be traced. In the interview a fresh live run shows "today" next to it.
 Rejected: regenerating it on interview day (fresher, but the text would need checking again).
 
 **D-morning-sample - Morning view sample: the 5 clinics with the most no-shows, sorted by count.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 On a single day the numbers are too small to rank clinics by rate: on Sat 7 Nov, 27 of 38
 clinics had 0 no-shows (a "best 3" would be an arbitrary pick from a tie), and the highest
 rates were 1 no-show out of 3 appointments (33%). Sorting by number of no-shows (then awaiting
@@ -565,6 +657,8 @@ ranking finding instead, where 28 settled days give several hundred appointments
 Rejected: 3 worst + 3 best by rate on one day (noise); all 38 clinics (too long for a summary).
 
 **D-fte - Lost vet hours are also shown as full-time vets, assuming a 37-hour week.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 525 hours in 28 days / 4 weeks = 131 hours a week; / 37 hours = about 3.5 full-time vets.
 Worded as "the equivalent of about 3.5 full-time vets' booked time".
 Assumptions: 37 hours is the standard Danish full-time week (Sweden's is 40, giving 3.3, so
@@ -572,6 +666,8 @@ Assumptions: 37 hours is the standard Danish full-time week (Sweden's is 40, giv
 Rejected: hours only (accurate, but less meaningful to Karin at a glance).
 
 **D-findings-staging - Service and weekday findings are queried outside the marts for now.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 Findings 4 (service) and 5 (weekday) come from SQL on staging and the daily mart, kept as dbt
 analyses (D-analyses) and linked from the FINDINGS.md appendix. They are the most actionable findings (where reminders pay off), so
 they are included even though no mart holds them yet.
@@ -581,6 +677,8 @@ than two numbers justify in this slice).
 
 ## Production (Azure)
 **D-azure - Production target: Container Apps Job + Key Vault + Azure SQL Database + Power BI.**
+> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
+> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
 Described in the README, not built (decided 9 Nov).
 - Azure SQL Database (Basic, about $5/month): Emil's team already knows SQL Server tools,
   Power BI connects natively, and the data is tiny (tens of MB). The dbt models move with the

@@ -148,7 +148,7 @@ Don't add folders or files beyond this without asking.
 | Context | **Why** | The situation and the evidence that forced a choice; link to the API note it came from | Yes |
 | Decision | **What** | The choice itself, in the bold title line | Yes |
 | Considered options | **Rejected** | Each alternative and why not. Not in the original ADR template; added by MADR (Markdown ADR) and kept here because it's what an interviewer asks about | Yes |
-| Consequences | Trade-offs, Change if | What the choice costs or makes harder, and the condition that would reopen it | Recommended |
+| Consequences | Trade-offs, Change if | What the choice costs or makes harder, and the condition that would reopen it. Label it (e.g. "Trade-offs:", "Change if:") so it can be found | Yes |
 
 If a required field is missing or too thin, mark the entry with a line starting
 `> **REVIEW:**` saying what's missing, so it can be found with a search and fixed by hand.
