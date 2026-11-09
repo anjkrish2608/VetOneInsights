@@ -111,6 +111,7 @@ nordvet_dbt/
   profiles.yml       # local DuckDB path only, no secrets
   models/staging/
   models/marts/
+  tests/             # singular SQL tests (D-singular-tests)
 data/                # DuckDB file lives here, gitignored
 ```
 Don't add folders or files beyond this without asking.

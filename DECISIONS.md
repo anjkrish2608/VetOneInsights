@@ -126,10 +126,53 @@ Cancelled appointments are excluded, because a cancelled slot isn't a no-show.
 **D-metric - Unresolved past `booked` rows.**
 Yesterday is shown per clinic as confirmed no-shows plus a separate
 "awaiting status" count. The headline clinic ranking uses a rate over settled days.
-The lower/upper range is kept as two columns.
+The lower/upper range is kept as two columns:
+- lower = no_show / (completed + no_show + awaiting): every awaiting appointment turns out completed
+- upper = (no_show + awaiting) / (completed + no_show + awaiting): every awaiting one is a no-show
 
 **D-settled - The last 3 days count as unsettled.**
 They are left out of the clinic-ranking rate.
+Precisely: a day is settled when `days_ago > 3` (as of today, Mon 9 Nov: 5 Nov and earlier).
+The 3 is a dbt variable (`unsettled_days` in dbt_project.yml), so it can be raised without
+touching SQL if more history shows no-shows arrive later.
+
+**D-last-open-day - Mette's "yesterday" is the last day any clinic was open (decided 9 Nov).**
+Clinics are closed on Sundays, so on Mondays calendar yesterday has no appointments and the
+view would be empty. `is_last_open_day` marks the most recent day before today with any
+appointments across the network: Saturday on a Monday, the previous day otherwise, and it
+skips public holidays without a holiday calendar. A clinic with no appointments that day
+simply has no row.
+Rejected: strict calendar yesterday (`days_ago = 1`): empty every Monday and after holidays.
+
+**D-ranking-window - Two windows: the recent 28 settled days (ranked), and all settled history.**
+- Recent: the newest 28 settled days (days_ago 4 to 31). The rank uses this, so it reflects
+  what is happening now and Mette can act on it. About 25 appointments per clinic per day
+  gives several hundred per clinic, enough for a stable rate.
+- History: every settled day since `BACKFILL_FROM` (1 Sep), as a baseline, so a clinic whose
+  recent rate jumps can be compared with its own normal.
+- Each window shows its counts (no-shows, completed) next to the rate, so a small sample is
+  visible, plus the network rate and the clinic's gap to it in percentage points.
+- 28 is a dbt variable (`ranking_window_days`).
+Rejected: only the recent window (no baseline); only history (reacts slowly to change).
+
+**D-inactive - Inactive clinics are left out of the ranking but keep their daily history.**
+CL-420 Ystad stays in the daily mart with `is_active = false` (its September data is real)
+and is filtered out of the ranking. `is_active` comes from the latest clinic snapshot, so:
+- a clinic VetOne marks inactive tomorrow drops out of the ranking on the next run, with no
+  code change; its history stays, flagged. The flag shows status *now*, not on that day.
+- `raw_clinics` keeps every snapshot (D-clinics), so the run where it changed is on record.
+- a clinic removed from VetOne entirely fails the `relationships` test (appointments ->
+  clinics), so the run stops loudly instead of silently dropping its appointments.
+- a new clinic appears automatically.
+Rejected: dropping inactive clinics everywhere (loses real history); ranking them (a closed
+clinic in Mette's list is noise).
+
+**D-money - Money lost = booked vet minutes lost to no-shows (`duration_minutes`), not kroner.**
+VetOne has no prices or fees, so Karin's "where are we losing money" is measured in vet time:
+the booked minutes of every no-show. Shown in minutes and hours per clinic-day and per clinic.
+Turning it into kroner needs Nordvet's average revenue per vet hour; that's a single
+multiplication once they give it to us.
+Rejected: guessing a price per service (would present made-up kroner as fact).
 
 **D-fields - patient_ref and vet_id not stored; updated_at, cancelled_at, deleted_at and created_at kept.**
 `patient_ref` and `vet_id` are dropped in Python before loading, so they never reach disk.
@@ -299,6 +342,37 @@ Status drives the no-show metric, so an unexpected status must stop the run befo
 sees wrong numbers. A new service type doesn't change the metric, so it should be noticed
 (a warning in the run log) without blocking the morning report.
 Rejected: failing on both (a harmless new service would block the report); no service test.
+
+**D-marts - Two mart tables, at two grains.**
+- `mart_clinic_daily_noshows`: one row per clinic per local day, every day before the as-of
+  date. Mette's morning view (`is_last_open_day`) and Power BI trends both come from it.
+- `mart_clinic_noshow_ranking`: one row per active clinic, built *from the daily mart*, so the
+  as-of date and the settled rule are defined once.
+SQL uses `sum(case when ...)` rather than DuckDB's `filter` / `count_if`, so the marts move
+to Azure SQL / Fabric with few changes.
+Rejected:
+- a separate "yesterday" table (a filter on the daily mart does it; one less model to keep in step)
+- one wide table with both grains (mixes daily rows and clinic totals; easy to double-count)
+- doing the ranking in Power BI only (the logic would live outside SQL, untested)
+
+**D-as-of - "Today" is a dbt variable, defaulting to today's date in Copenhagen.**
+`as_of_date` defaults to `cast(timezone('Europe/Copenhagen', current_timestamp) as date)`;
+`dbt build --vars "{as_of_date: '2026-11-06'}"` rebuilds the marts as of any past morning.
+Both countries share Copenhagen's clock time. Used to reproduce FINDINGS.md numbers, to
+demo, and to re-run a past day. Checked 9 Nov: as of 6 Nov, the last open day is Thu 5 Nov
+and settled days end on 2 Nov.
+Rejected: plain `current_date` (it's the UTC date in our session, a day behind Copenhagen
+between midnight and 01:00/02:00).
+
+**D-singular-tests - Three SQL test files in `nordvet_dbt/tests/` (folder added 9 Nov, approved).**
+- `assert_noshow_rates_between_0_and_1`: every rate in both marts is between 0 and 1
+- `assert_noshow_rate_bounds_ordered`: lower <= confirmed <= upper on every clinic-day
+- `assert_daily_mart_reconciles_to_staging`: per day, the mart's appointment total equals the
+  staging count, so no appointment is lost or double-counted between layers
+Each returns the offending rows, so a failure shows exactly what's wrong. Checked 9 Nov:
+40/40 tests pass; daily mart and ranking spot-checked against raw/staging by hand.
+Rejected: the `dbt_utils` package (a dependency for two or three checks; plain SQL is
+easier for Emil's team to read).
 
 **D-dbt-run - `run_pipeline.py` runs `dbt build` as a subprocess after ingestion.**
 `dbt build` runs every model and every test in dependency order, so one command both builds
