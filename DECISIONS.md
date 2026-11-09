@@ -147,6 +147,8 @@ Rejected:
 - `limit=1000` or higher (works, but only because it is quietly capped; misleading to read)
 - the default limit of 100 (5x more calls on a rate-limited API)
 - open-ended `from` or `to` (unpredictable size; one test pulled 60,000 rows by accident)
+- keeping the backfill "to the run date" (simpler, but the awaiting-status count can miss
+  old bookings that were never updated)
 
 **D-incremental - Daily run uses `updated_since` = the highest `updated_at` already in raw.**
 The watermark is read from the data, not from the clock or a "last run" record, so a failed
