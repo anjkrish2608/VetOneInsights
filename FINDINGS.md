@@ -102,117 +102,37 @@ less than 3 days old are left out because their no-shows aren't all recorded yet
 
 ## Appendix: how to reproduce
 
-All numbers come from the DuckDB file `data/nordvet.duckdb` after `python run_pipeline.py`.
-To rebuild the marts as of this document's date:
+All numbers come from `data/nordvet.duckdb` after `python run_pipeline.py`. To rebuild the
+marts as of this document's date:
 
 ```bash
-.venv/Scripts/dbt build --project-dir nordvet_dbt --profiles-dir nordvet_dbt --vars "{as_of_date: '2026-11-09'}"
+.venv\Scripts\dbt build --project-dir nordvet_dbt --profiles-dir nordvet_dbt --vars "{as_of_date: '2026-11-09'}"
 ```
 
 The data is live, so a later run can shift numbers slightly as statuses keep changing.
-Run any query below in a DuckDB client (e.g. DBeaver), or from Python:
-`duckdb.connect('data/nordvet.duckdb', read_only=True).sql("<query>").show()`
 
-Findings 4 and 5 (service and weekday) are queried from staging and the daily mart here.
-With more time they would get their own mart, so they are built and tested every run like
-the rest (see DECISIONS.md, Next steps).
+The SQL behind every number is a dbt analysis in [nordvet_dbt/analyses/](nordvet_dbt/analyses/).
+Analyses use `ref()` like the models, so dbt checks them when it compiles. Run one with
+`dbt show`, for example:
 
-**Morning view: network total (last open day)**
-```sql
-select appointment_date, sum(appointments) as appointments, sum(completed) as completed,
-       sum(no_shows) as no_shows, sum(cancelled) as cancelled, sum(awaiting_status) as awaiting,
-       round(100.0 * sum(no_shows) / sum(completed + no_shows), 1) as rate_pct,
-       round(100.0 * sum(no_shows + awaiting_status)
-             / sum(completed + no_shows + awaiting_status), 1) as upper_pct,
-       sum(lost_vet_minutes) as lost_minutes
-from mart_clinic_daily_noshows
-where is_last_open_day
-group by appointment_date;
+```bash
+.venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --select findings_06_service
 ```
 
-**Morning view: 5 clinics with the most no-shows**
-```sql
-select clinic_name, appointments, no_shows, awaiting_status,
-       round(100 * no_show_rate, 1) as rate_pct, lost_vet_minutes
-from mart_clinic_daily_noshows
-where is_last_open_day
-order by no_shows desc, awaiting_status desc, appointments desc
-limit 5;
-```
+| Number in this document | Analysis |
+|---|---|
+| Morning view: network total | [findings_01_morning_total.sql](nordvet_dbt/analyses/findings_01_morning_total.sql) |
+| Morning view: 5 clinics with the most no-shows | [findings_02_morning_top5.sql](nordvet_dbt/analyses/findings_02_morning_top5.sql) |
+| Findings 1, 2: worst and best 3 | [findings_03_ranking_worst_best.sql](nordvet_dbt/analyses/findings_03_ranking_worst_best.sql) |
+| Finding 1: clinics above twice the network rate | [findings_04_over_2x_network.sql](nordvet_dbt/analyses/findings_04_over_2x_network.sql) |
+| Finding 3: weekly network rate | [findings_05_weekly_rate.sql](nordvet_dbt/analyses/findings_05_weekly_rate.sql) |
+| Finding 4: rate by service | [findings_06_service.sql](nordvet_dbt/analyses/findings_06_service.sql) |
+| Finding 5: rate by weekday | [findings_07_weekday.sql](nordvet_dbt/analyses/findings_07_weekday.sql) |
+| Finding 6: lost vet hours and full-time vets | [findings_08_lost_hours.sql](nordvet_dbt/analyses/findings_08_lost_hours.sql) |
+| Finding 6: the 5 worst clinics' share | [findings_09_lost_top5_share.sql](nordvet_dbt/analyses/findings_09_lost_top5_share.sql) |
+| Finding 7: by country | [findings_10_country.sql](nordvet_dbt/analyses/findings_10_country.sql) |
+| Question 1: cancellations after the start | [findings_11_late_cancellations.sql](nordvet_dbt/analyses/findings_11_late_cancellations.sql) |
 
-**Findings 1, 2: worst and best 3, and network totals**
-```sql
-select rank_recent, clinic_name, round(100 * no_show_rate_recent, 1) as recent_pct,
-       no_shows_recent, lost_vet_hours_recent, round(100 * no_show_rate_history, 1) as history_pct
-from mart_clinic_noshow_ranking
-where rank_recent <= 3 or rank_recent > (select count(*) - 3 from mart_clinic_noshow_ranking)
-order by rank_recent;
-
-select clinic_name, round(100 * no_show_rate_recent, 1) as recent_pct
-from mart_clinic_noshow_ranking
-where no_show_rate_recent > 2 * network_rate_recent;
-```
-
-**Finding 3: weekly network rate (settled days)**
-```sql
-select date_trunc('week', appointment_date) as week_starting,
-       round(100.0 * sum(no_shows) / sum(completed + no_shows), 1) as rate_pct
-from mart_clinic_daily_noshows
-where is_settled and is_active
-group by 1 order by 1;
-```
-
-**Finding 4: rate by service (settled days, active clinics)**
-```sql
-select a.service,
-       round(100.0 * sum(case when a.status = 'no_show' then 1 else 0 end)
-             / sum(case when a.status in ('completed', 'no_show') then 1 else 0 end), 1) as rate_pct
-from stg_vetone__appointments as a
-join stg_vetone__clinics as c on a.clinic_id = c.clinic_id and c.is_active
-where a.scheduled_date_local <= (select max(settled_until) from mart_clinic_noshow_ranking)
-group by a.service
-order by rate_pct desc;
-```
-
-**Finding 5: rate by weekday (settled days, active clinics)**
-```sql
-select dayname(appointment_date) as weekday,
-       round(100.0 * sum(no_shows) / sum(completed + no_shows), 1) as rate_pct
-from mart_clinic_daily_noshows
-where is_settled and is_active
-group by weekday, isodow(appointment_date)
-order by isodow(appointment_date);
-```
-
-**Finding 6: lost vet hours, and the 5 worst clinics' share**
-```sql
-select round(sum(lost_vet_minutes_recent) / 60.0) as lost_hours_28d
-from mart_clinic_noshow_ranking;
--- 525 h / 4 weeks = 131 h a week, and 131 h / 37 h full-time week = about 3.5 full-time vets
-
-with ranked as (
-    select lost_vet_minutes_recent,
-           rank() over (order by lost_vet_minutes_recent desc) as r
-    from mart_clinic_noshow_ranking
-)
-select round(100.0 * sum(case when r <= 5 then lost_vet_minutes_recent else 0 end)
-             / sum(lost_vet_minutes_recent)) as top5_share_pct
-from ranked;
-```
-
-**Finding 7: by country**
-```sql
-select country,
-       round(100.0 * sum(no_shows_recent) / sum(completed_recent + no_shows_recent), 1) as recent_pct
-from mart_clinic_noshow_ranking
-group by country;
-```
-
-**Question 1: cancellations recorded after the appointment started**
-```sql
-select count(*) as cancelled,
-       sum(case when cancelled_at > scheduled_at then 1 else 0 end) as after_start
-from stg_vetone__appointments
-where status = 'cancelled'
-  and scheduled_date_local <= (select max(settled_until) from mart_clinic_noshow_ranking);
-```
+Findings 4 and 5 (service and weekday) are analyses rather than marts for now. With more
+time they would get their own mart, so they are built and tested every run like the rest
+(see DECISIONS.md, Next steps).

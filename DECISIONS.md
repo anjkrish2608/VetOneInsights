@@ -320,8 +320,8 @@ Assumptions: 37 hours is the standard Danish full-time week (Sweden's is 40, giv
 Rejected: hours only (accurate, but less meaningful to Karin at a glance).
 
 **D-findings-staging - Service and weekday findings are queried outside the marts for now.**
-Findings 4 (service) and 5 (weekday) come from SQL on staging and the daily mart, written out in
-the FINDINGS.md appendix. They are the most actionable findings (where reminders pay off), so
+Findings 4 (service) and 5 (weekday) come from SQL on staging and the daily mart, kept as dbt
+analyses (D-analyses) and linked from the FINDINGS.md appendix. They are the most actionable findings (where reminders pay off), so
 they are included even though no mart holds them yet.
 With more time: a mart for them, so they are built and tested every run (see Next steps).
 Rejected: leaving them out (loses the clearest "what to do"); building a mart now (more work
@@ -536,6 +536,20 @@ Each returns the offending rows, so a failure shows exactly what's wrong. Checke
 raw/staging by hand.
 Rejected: the `dbt_utils` package (a dependency for two or three checks; plain SQL is
 easier for Emil's team to read).
+
+**D-analyses - The SQL behind FINDINGS.md lives in `nordvet_dbt/analyses/` (folder added 9 Nov, approved).**
+What: one analysis file per number in FINDINGS.md (11 files, `findings_01_...` to
+`findings_11_...`), linked from its appendix. Run with
+`dbt show --select <name>`.
+Why: `analyses/` is dbt's own folder for ad-hoc SQL that isn't a model. The queries use
+`ref()` like the models (the CLAUDE.md rule), so `dbt compile` checks them and they break
+loudly if a model is renamed, instead of going stale in a Markdown file. They follow the
+same CTE style. Checked 9 Nov: all 11 run and match the numbers in FINDINGS.md.
+Rejected:
+- SQL pasted into the FINDINGS.md appendix (the first version: hard-coded table names, not
+  checked by dbt, and long for Mette to scroll past)
+- turning them into models (they'd be built every run for numbers only FINDINGS.md uses;
+  a service/weekday mart is in Next steps for the two that deserve it)
 
 **D-dbt-run - `run_pipeline.py` runs `dbt build` as a subprocess after ingestion.**
 `dbt build` runs every model and every test in dependency order, so one command both builds
