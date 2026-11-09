@@ -200,6 +200,35 @@ lead-time analysis (how far ahead was the booking made, and do late bookings no-
 No slides, and no Power BI report unless time allows.
 Parquet/CSV only as an optional export of the final view for Power BI.
 
+**D-findings-snapshot - FINDINGS.md is frozen at Mon 9 Nov 2026 (run 20261109T135405Z).**
+The data is live, so numbers re-run later drift as statuses change. The header states the
+as-of date and load time, and the appendix gives the `as_of_date` command plus the SQL behind
+every number, so they can be traced. In the interview a fresh live run shows "today" next to it.
+Rejected: regenerating it on interview day (fresher, but the text would need checking again).
+
+**D-morning-sample - Morning view sample: the 5 clinics with the most no-shows, sorted by count.**
+On a single day the numbers are too small to rank clinics by rate: on Sat 7 Nov, 27 of 38
+clinics had 0 no-shows (a "best 3" would be an arbitrary pick from a tie), and the highest
+rates were 1 no-show out of 3 appointments (33%). Sorting by number of no-shows (then awaiting
+status) answers "who needs a call today?". The 3 worst + 3 best comparison goes in the
+ranking finding instead, where 28 settled days give several hundred appointments per clinic.
+Rejected: 3 worst + 3 best by rate on one day (noise); all 38 clinics (too long for a summary).
+
+**D-fte - Lost vet hours are also shown as full-time vets, assuming a 37-hour week.**
+525 hours in 28 days / 4 weeks = 131 hours a week; / 37 hours = about 3.5 full-time vets.
+Worded as "the equivalent of about 3.5 full-time vets' booked time".
+Assumptions: 37 hours is the standard Danish full-time week (Sweden's is 40, giving 3.3, so
+"about 3.5" still holds); it counts booked appointment time only, not admin or breaks.
+Rejected: hours only (accurate, but less meaningful to Karin at a glance).
+
+**D-findings-staging - Service and weekday findings are queried outside the marts for now.**
+Findings 4 (service) and 5 (weekday) come from SQL on staging and the daily mart, written out in
+the FINDINGS.md appendix. They are the most actionable findings (where reminders pay off), so
+they are included even though no mart holds them yet.
+With more time: a mart for them, so they are built and tested every run (see Next steps).
+Rejected: leaving them out (loses the clearest "what to do"); building a mart now (more work
+than two numbers justify in this slice).
+
 ## Ingestion
 **D-deleted - Always request `include_deleted=true`; keep `deleted_at`; drop deleted rows in staging.**
 Without the flag, deleted appointments silently disappear from the API. Raw is append-only,
@@ -456,6 +485,8 @@ Candidates (Claude's suggestions: keep, edit or delete):
 - Test whether `from`/`to` mean the clinic's local date or UTC (needs an appointment near
   midnight, e.g. an emergency/out-of-hours clinic; matters only if opening hours change)
 - Add alerting when a clinic's no-show rate spikes
+- A mart for no-shows by service and weekday (D-findings-staging), so FINDINGS.md findings
+  4 and 5 are built and tested every run instead of queried by hand
 - Late cancellations (D-late-cancellations): discuss with Mette whether a cancellation
   recorded after the appointment started is really a no-show; then add a separate
   `late_cancellations` count to the daily mart, or fold them into the rate if Nordvet agrees
