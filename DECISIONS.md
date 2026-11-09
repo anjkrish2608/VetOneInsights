@@ -147,13 +147,11 @@ Yesterday is shown per clinic as confirmed no-shows plus a separate
 The lower/upper range is kept as two columns:
 - lower = no_show / (completed + no_show + awaiting): every awaiting appointment turns out completed
 - upper = (no_show + awaiting) / (completed + no_show + awaiting): every awaiting one is a no-show
-Why: statuses are finalised at different speeds (see D-settled). Completions are recorded
-within hours, but no-shows about a day later, so at 8am yesterday's no-shows are mostly still
-`booked`. Evidence (SQLite era, 6 Nov): 241 past appointments were still `booked`, 81 of them
-from earlier days (2-5 Nov: 3, 2, 20, 56), with more unresolved the more recent the day. For
-5 Nov at 8am: 13 confirmed no-shows and 56 still booked, i.e. 1.8% confirmed vs 8.9% if every
-unresolved booking became a no-show. A rate for yesterday alone would mislead Mette; counts that
-can be read at a glance would not. Settled days give a stable ranking.
+Why: completions are recorded within hours but no-shows about a day later, so at 8am
+yesterday's no-shows are mostly still `booked` (API notes 14-15). On 5 Nov at 8am: 1.8%
+confirmed vs 8.9% if every unresolved booking became a no-show. A rate for yesterday alone
+would mislead Mette; counts that can be read at a glance would not. Settled days give a
+stable ranking.
 Rejected:
 - counting unresolved bookings as no-shows (overstates: most turn out completed)
 - ignoring them (understates, and hides the gap)
@@ -167,28 +165,16 @@ Precisely: a day is settled when `days_ago > 3` (as of today, Mon 9 Nov: 5 Nov a
 In practice the earliest settled day is read about 3.5-4 days after its appointments.
 The 3 is a dbt variable (`unsettled_days` in dbt_project.yml), so it can be raised without
 touching SQL if more history shows no-shows arrive later.
-Why 3 - how long after the appointment each status is recorded (`updated_at` - `scheduled_at`):
-
-| Status | SQLite era, 7-day window (6 Nov) | Re-measured 9 Nov, Sep-Oct appointments |
-|---|---|---|
-| completed | median 2.0h, 90% within 3.2h | median 2.0h, 90% within 3.2h (99.6% within 3 days) |
-| no_show | min 15.1h, median 25.2h, 90% within 53.6h, max 117.2h | min 14.8h, median 25.4h, 90% within 66.5h, max 126.3h |
-| cancelled | median 20.8h *before* start, 90% by 2.1h after | median 20.5h before start, 90% by 2.9h after, max 5.0h after |
-
-The SQLite-era window was only 7 days, so slow no-shows fell outside it ("censored") and the
-lag looked shorter (90% within ~2.2 days). With 9 weeks of data: 92.3% of no-shows are
-recorded within 3 days and 96.1% within 4.
-Supporting evidence: no `booked` rows are left for any September day (checked in the SQLite era
-and again 9 Nov), and on 9 Nov only 3 appointments on settled days were still awaiting a status.
+Why 3: 92.3% of no-shows are recorded within 3 days and 96.1% within 4 (API note 14, which
+has the full lag table, SQLite-era and re-measured). No September day has `booked` rows left,
+and only 3 settled-day appointments were still awaiting a status on 9 Nov (API note 15).
 Known limit: a few no-shows arrive later (the slowest took about 5 days), so the ranking
 slightly understates every clinic's rate.
-Is the lag equal across clinics? (open in the SQLite era, checked 9 Nov) Not exactly: the share
-of no-shows recorded within 3 days ranges from 82.5% (Jönköping) to 100% across the 38 active
-clinics; the slowest are Jönköping, Odense S, Esbjerg, Aarhus C and Hellerup. Within 4 days,
-every clinic is at 93% or more. Small clinics have few no-shows (42-70 at the slowest), so part
-of the spread is noise, and it barely correlates with the no-show rate (-0.2). The bias could
-move a clinic's rate by a few tenths of a point, not change the ranking, where the gaps between
-best and worst are 15+ points.
+Is the lag equal across clinics? (open in the SQLite era, checked 9 Nov) Not exactly: 82.5%
+(Jönköping) to 100% within 3 days, but 93% or more everywhere within 4. The slowest clinics
+have few no-shows (42-70), so part of the spread is noise, and it barely correlates with the
+no-show rate (-0.2). It could move a clinic's rate by a few tenths of a point, not change the
+ranking, where best and worst are 15+ points apart.
 Change if: more history shows the lag getting longer, or a clinic's late recording grows; then
 raise `unsettled_days` to 4.
 Rejected: 1 day (40% of no-shows recorded) or 2 days (81%), measured 9 Nov; 7 days (100%
@@ -487,7 +473,7 @@ Rejected:
 
 **D-timestamps - Cast to `timestamptz` with the dbt session in UTC; keep the local date as text gives it.**
 - All timestamps are cast to `timestamptz`, never `timestamp`, which silently drops the
-  offset (see Tooling notes). `profiles.yml` sets the session timezone to UTC.
+  offset (docs/vetone_api_notes.md, note 19). `profiles.yml` sets the session timezone to UTC.
 - `scheduled_date_local` = the first 10 characters of `scheduled_at` (e.g. 2026-11-05).
   The API already sends the clinic's local time, so its date part *is* the clinic's day.
   This is the "day" for all reporting ("yesterday per clinic").
@@ -564,55 +550,9 @@ Rejected:
 - separate manual steps (easy to run out of order; D-entry)
 
 ## API quirks found
-Found during the API exploration on 9 Nov 2026. Raw responses are saved in `data/explore/`
-(gitignored, so local only).
-
-1. **Deleted appointments are hidden by default.** Default 7-day pull: 5,442 rows; with
-   `include_deleted=true`: 5,496, of which 53 had a `deleted_at` field. Deleted rows keep a
-   normal status (e.g. `completed`). `deleted_at` is never after `updated_at`. -> D-deleted
-2. **`include_deleted` silently ignores values it doesn't recognise.** `true`/`True` work;
-   `1`/`yes` return 200 with no deleted rows. -> D-validate
-3. **`updated_since` drops the default 7-day window.** It returned appointments from 28 Oct
-   (late status changes) and future bookings to 9 Dec. -> D-incremental
-4. **`updated_since` includes the boundary; `updated_at` is mostly whole minutes** (4,576 of
-   5,442 end in `:00`). Rows stamped exactly at the watermark come back again. -> D-incremental
-5. **`updated_since` timezones:** `Z`, `+01:00`, `-05:00` and no offset give identical results
-   (no offset = UTC). An unencoded `+` gets `400 invalid updated_since`. A bare date is
-   accepted as midnight UTC.
-6. **Leaving out `from` or `to` changes the window a lot.** No params: 7 days back to today.
-   `from` only: open-ended into future bookings. `to` only: all history from 31 Jul 2026.
-   `from` after `to`: 200 with 0 rows. Dates are inclusive; a datetime gets a 400.
-   -> D-backfill, D-validate
-7. **`limit` is silently capped at 500.** Default 100; 0, -1 and text get a 400. -> D-backfill
-8. **The cursor carries its own filters.** It is signed base64 JSON (filters, an as-of
-   timestamp, sort key `scheduled_at` + `id`). Filters sent with a cursor are ignored; an
-   edited cursor gets `400 invalid cursor`. No duplicate ids within any full pull.
-9. **Tokens last 60 minutes**, but the token response only has `access_token` and
-   `token_type`; the expiry is inside the token itself. -> D-errors
-10. **Transient errors.** About 1 in 15 calls got `500 temporary error, please retry` (all
-    succeeded on retry). Paging at ~3 requests/s triggered 429s with `Retry-After` of 1-12s.
-    -> D-errors
-11. **39 clinics, not 38 as the brief says.** 38 are active; the 39th is CL-420 Nordvet Ystad
-    (SE), marked `active: false`, with appointments until September and none since. 24 DK,
-    15 SE. Clinics have 7 fields: `id`, `name`, `city`, `country`, `timezone`
-    (Europe/Copenhagen or Europe/Stockholm), `active`, `opened_on`. `/v1/clinics` is one page
-    (no `next_cursor`), with no duplicate ids. -> D-clinics, D-inactive
-12. **Response shape and timestamp formats** (first seen in the SQLite era). Records sit under
-    a `data` key, not at the top level, with `next_cursor` next to it. `scheduled_at` is the
-    clinic's local time with an offset and no seconds (`2026-11-05T08:00+01:00`);
-    `created_at`, `updated_at`, `cancelled_at` and `deleted_at` are UTC with `Z`
-    (`2026-10-29T12:27:41Z`). -> D-timestamps
-
-Tooling notes (not the API, but found while building):
-- **DuckDB `cast(... as timestamp)` silently drops the UTC offset.**
-  `cast('2026-11-09T13:28:00+01:00' as timestamp)` gives 13:28, not 12:28 UTC. Casting to
-  `timestamptz` (with the session timezone set to UTC) converts correctly. Staging must use
-  `timestamptz` for `scheduled_at`, `updated_at`, `cancelled_at`, `deleted_at`, `created_at`.
-
-Data quality on 74,238 rows (Jul-Dec): no nulls in key fields, only the 4 known statuses,
-no unknown clinic ids, `cancelled_at` set exactly when cancelled, `scheduled_at` offsets switch
-correctly at the 25 Oct clock change, duration is fixed per service. Inactive CL-420 (Ystad)
-had appointments until September.
+Moved to [docs/vetone_api_notes.md](docs/vetone_api_notes.md) on 9 Nov: what the API and the
+data actually do, each with what was observed, the evidence, the impact and how it's handled.
+This file keeps the choices; that one keeps the observations.
 
 ## Next steps / what I'd change with more time
 Candidates (Claude's suggestions: keep, edit or delete):

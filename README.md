@@ -9,6 +9,7 @@ it runs on a laptop today, and the target set-up in Nordvet's Azure is described
 
 - **What we found:** [FINDINGS.md](FINDINGS.md)
 - **Why it's built this way:** [DECISIONS.md](DECISIONS.md) (decisions are referred to as D-… below)
+- **What the VetOne API actually does:** [docs/vetone_api_notes.md](docs/vetone_api_notes.md)
 
 ```
 VetOne API ──► Python ingestion ──► raw tables ─────► dbt staging ─────► dbt marts ─────► Power BI
@@ -156,7 +157,7 @@ the daily mart reconciles to staging.
 - A cancellation recorded after the appointment started is still treated as a cancellation,
   not a no-show. This is a question for Nordvet (D-late-cancellations).
 
-**The API** (found by testing; evidence in DECISIONS.md, "API quirks found"):
+**The API** (found by testing; evidence in [docs/vetone_api_notes.md](docs/vetone_api_notes.md)):
 - Deleted appointments are hidden unless `include_deleted=true` is sent, and only the exact
   value `true` works (D-deleted).
 - `updated_since` returns every appointment changed since a time, including old ones whose
