@@ -18,9 +18,13 @@ Note: the repo has to open without an invite, so make it public (or zip it) at s
 **D-branch - The pivot to dbt + DuckDB is built on a `dbt-duckdb` branch.**
 `main` keeps the earlier SQLite plan until the new version runs end to end, then gets merged.
 Keeping the switch visible in the history shows a deliberate change of direction.
+Merged into `main` on 9 Nov 2026, once the pipeline ran end to end from a clean start, with a
+merge commit (`--no-ff`) so the `dbt-duckdb` branch stays visible as one block in the history.
 Rejected:
 - rewriting main in place (hides the reasoning)
 - a new repo (loses the history)
+- a fast-forward merge (possible, since main hadn't moved, but the pivot would blend into
+  main's history with no marker of where the branch began and ended)
 
 ## Language
 **D-lang - Python for ingestion (decided 9 Nov; was provisional).**
