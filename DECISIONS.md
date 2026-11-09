@@ -200,6 +200,34 @@ lead-time analysis (how far ahead was the booking made, and do late bookings no-
 No slides, and no Power BI report unless time allows.
 Parquet/CSV only as an optional export of the final view for Power BI.
 
+**D-azure - Production target: Container Apps Job + Key Vault + Azure SQL Database + Power BI.**
+Described in the README, not built (decided 9 Nov).
+- Azure SQL Database (Basic, about $5/month): Emil's team already knows SQL Server tools,
+  Power BI connects natively, and the data is tiny (tens of MB). The dbt models move with the
+  `dbt-sqlserver` adapter; `qualify`, `timezone()`, `strftime` and `datediff` need T-SQL
+  rewrites, and the raw loader switches from DuckDB to an Azure SQL connection.
+- Container Apps Job: runs the unchanged `python run_pipeline.py` daily. A 2-minute run uses
+  about 1% of the free monthly grant (180,000 vCPU-seconds), so about $0.
+- Key Vault for the VetOne credentials, passed in as environment variables (no code change).
+- Prices checked by web search on 9 Nov 2026 (list prices, USD): Azure SQL Basic about $5/month
+  (up to ~$20 by region), Power BI Pro $14/user/month (raised from $10 in 2025; included in
+  Microsoft 365 E5). Infrastructure total about $5-25/month.
+Rejected:
+- DuckDB file on Azure storage with marts exported as Parquet (cheapest, no SQL rewrite, but
+  Power BI reads files rather than a database and it is less familiar to Emil's team)
+- Microsoft Fabric (only sensible if Nordvet already pays for Fabric capacity)
+- Azure Functions (a timer trigger works, but running dbt inside Functions is awkward; the job
+  runs the same command as the laptop)
+- Azure Data Factory for the extract (heavier than one API call loop; a fair no-code option)
+
+**D-docs - dbt docs is how people browse the models (documented in the README, not hosted).**
+`dbt docs generate` + `dbt docs serve` build a local website from the same YAML descriptions
+and tests the pipeline uses: every model, column and test, plus the lineage graph from raw to
+marts. The documentation can't drift from the code, and there's no separate wiki to maintain.
+Run it after a pipeline run (DuckDB allows one writer at a time). Tested 9 Nov.
+Rejected for now: hosting the docs as a static site in Azure (small next step); a hand-written
+data dictionary (would go out of date).
+
 **D-findings-snapshot - FINDINGS.md is frozen at Mon 9 Nov 2026 (run 20261109T135405Z).**
 The data is live, so numbers re-run later drift as statuses change. The header states the
 as-of date and load time, and the appendix gives the `as_of_date` command plus the SQL behind
