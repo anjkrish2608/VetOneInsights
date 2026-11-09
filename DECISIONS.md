@@ -57,6 +57,13 @@ Rejected:
   and other dbt dependencies could break next)
 - the 3.10 already on the laptop (below the 3.11+ requirement)
 
+**D-dbt-v1 - Stay on dbt Core v1 (pinned 1.12.6), not dbt v2.**
+dbt now announces v2 as the default for new installations. dbt-duckdb is built for v1,
+and nearly all documentation, examples and answers online are for v1, which is what
+Emil's team will search for after handover. The models are plain SQL + YAML either way.
+Rejected: dbt v2 (newer, but the adapter support and know-how are thinner; upgrading later
+is a documented path).
+
 **D-lint - ruff for formatting and linting.**
 One fast tool instead of three.
 Rejected: black + flake8 + isort (same job, more setup), no linter (inconsistent code at handover).
@@ -143,7 +150,9 @@ Rejected:
 so 500 means the fewest calls without relying on undocumented behaviour.
 `from` and `to` are both needed because leaving one out changes the window a lot:
 `to` alone returns all history back to 31 Jul 2026; `from` alone runs a month into future bookings.
-Both dates are inclusive and are the clinic's local date.
+Both dates are inclusive. Assumed to be the clinic's local date, but not tested: appointments
+run 08:00-17:15 local, so the local and UTC dates are always the same and the data can't
+tell them apart. Doesn't affect results today (see Next steps).
 Backfill start date: 1 Sep 2026 (set as `BACKFILL_FROM` in .env), to the run date + 90 days.
 Note on "90 days": here it means 90 days *ahead* (future bookings), not 90 days of history.
 History is set by the start date (1 Sep). An earlier plan suggested "90 days of history";
@@ -288,7 +297,8 @@ Candidates (Claude's suggestions: keep, edit or delete):
 - Run it on a schedule in Azure (e.g. Container Apps job or Azure Function) instead of my laptop
 - Move the models to Fabric Warehouse or Azure SQL (T-SQL has no QUALIFY, so the dedupe needs rewriting)
 - Build a Power BI report on the final view for Mette
-- Handle deleted appointments explicitly (include_deleted)
+- Test whether `from`/`to` mean the clinic's local date or UTC (needs an appointment near
+  midnight, e.g. an emergency/out-of-hours clinic; matters only if opening hours change)
 - Add alerting when a clinic's no-show rate spikes
 - Lead-time analysis using `created_at`: do bookings made far ahead (or last minute) no-show more?
 - Add pytest for the API client (pagination, token expiry) and run checks in GitHub Actions
