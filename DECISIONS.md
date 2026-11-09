@@ -291,6 +291,18 @@ sees wrong numbers. A new service type doesn't change the metric, so it should b
 (a warning in the run log) without blocking the morning report.
 Rejected: failing on both (a harmless new service would block the report); no service test.
 
+**D-dbt-run - `run_pipeline.py` runs `dbt build` as a subprocess after ingestion.**
+`dbt build` runs every model and every test in dependency order, so one command both builds
+and checks the data. It's the same command Emil's team would type themselves. It runs only
+after ingestion has closed its DuckDB connection (DuckDB allows one writer). The dbt next to
+the running Python is used, so the venv's pinned version runs even if the venv isn't
+activated. If dbt fails, the run exits with code 1; this run's raw rows stay loaded (raw is
+append-only and correct), so after fixing the cause a plain re-run finishes the job.
+Rejected:
+- dbt's Python API (`dbtRunner`): less familiar to a SQL team than the command line
+- `dbt run` then `dbt test` separately: a bad staging model would feed the marts before tests run
+- separate manual steps (easy to run out of order; D-entry)
+
 ## API quirks found
 Found during the API exploration on 9 Nov 2026. Raw responses are saved in `data/explore/`
 (gitignored, so local only).
