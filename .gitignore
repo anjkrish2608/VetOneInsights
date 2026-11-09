@@ -221,3 +221,17 @@ __marimo__/
 
 # Local data and database files 
 data/
+
+# Local warehouse files and the case brief (contains the client secret)
+*.duckdb
+*.duckdb.wal
+*.db
+*.sqlite
+*.pdf
+
+# dbt build output and local user file
+nordvet_dbt/target/
+nordvet_dbt/dbt_packages/
+nordvet_dbt/logs/
+nordvet_dbt/.user.yml
+logs/

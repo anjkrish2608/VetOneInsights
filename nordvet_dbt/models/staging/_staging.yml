@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: stg_vetone__clinics
+    description: >
+      One row per clinic, taken from the latest /v1/clinics snapshot.
+      Includes inactive clinics (CL-420 Ystad); marts decide what to show.
+    columns:
+      - name: clinic_id
+        description: VetOne clinic id, e.g. CL-965. Primary key.
+        data_tests: [unique, not_null]
+      - name: clinic_name
+        description: Clinic name, e.g. "Nordvet København Ø".
+        data_tests: [not_null]
+      - name: city
+        description: City the clinic is in.
+      - name: country
+        description: Country code, DK or SE.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["DK", "SE"]
+      - name: timezone
+        description: IANA timezone, Europe/Copenhagen or Europe/Stockholm.
+      - name: is_active
+        description: False for closed clinics (CL-420 Ystad, no appointments since September).
+        data_tests: [not_null]
+      - name: opened_on
+        description: Date the clinic opened.
+      - name: _loaded_at
+        description: UTC time the snapshot was loaded.
+
+  - name: stg_vetone__appointments
+    description: >
+      One row per appointment: the latest version from raw (highest updated_at),
+      with deleted appointments removed. Timestamps are cast to timestamptz (UTC);
+      local scheduled time and date are kept as the clinic saw them.
+    columns:
+      - name: appointment_id
+        description: VetOne appointment id, e.g. apt_1117b9402a67. Primary key.
+        data_tests: [unique, not_null]
+      - name: clinic_id
+        description: Clinic the appointment belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_vetone__clinics')
+                field: clinic_id
+      - name: service
+        description: Type of visit. Each service has a fixed duration.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["consultation", "vaccination", "follow_up", "dental", "surgery"]
+              config:
+                severity: warn  # a new service type should be noticed, not stop the run
+      - name: status
+        description: >
+          booked (not happened yet, or outcome not recorded yet), completed, cancelled,
+          or no_show. Statuses change after the fact; no-shows are recorded ~1 day late.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["booked", "completed", "cancelled", "no_show"]
+      - name: duration_minutes
+        description: Booked length of the appointment in minutes (used for lost vet time).
+        data_tests: [not_null]
+      - name: scheduled_at
+        description: Appointment start as an absolute time (timestamptz, shown in UTC).
+        data_tests: [not_null]
+      - name: scheduled_at_local
+        description: Appointment start in the clinic's local wall-clock time, e.g. 08:00.
+        data_tests: [not_null]
+      - name: scheduled_date_local
+        description: The clinic's local date of the appointment; the "day" used in all reporting.
+        data_tests: [not_null]
+      - name: created_at
+        description: When the booking was made (UTC). Kept for later lead-time analysis.
+      - name: updated_at
+        description: Last change in VetOne (UTC). Used to pick the latest version.
+        data_tests: [not_null]
+      - name: cancelled_at
+        description: When the appointment was cancelled (UTC); null unless status is cancelled.
+      - name: _loaded_at
+        description: UTC time the chosen version was loaded into raw.
