@@ -174,6 +174,22 @@ Turning it into kroner needs Nordvet's average revenue per vet hour; that's a si
 multiplication once they give it to us.
 Rejected: guessing a price per service (would present made-up kroner as fact).
 
+**D-late-cancellations - Late cancellations stay "cancelled" for now; flagged to discuss with Nordvet.**
+Late-recorded cancellations *are* picked up: cancelling sets `updated_at` equal to
+`cancelled_at` (all 3,782 cancelled rows), so the next run fetches the change and the marts
+recalculate. They arrive within hours (latest 5h), well inside the 3-day settled rule.
+The open question is what they mean: 766 of 3,782 cancellations (20%) were recorded *after*
+the appointment had started (median 2.8h, 90% within 4.6h). These are probably "the patient
+didn't come and reception marked it cancelled", i.e. no-shows in practice. Counting them would
+raise no-shows from 3,474 to about 4,240 (+22%).
+Decision: keep the fixed metric (cancelled excluded) and leave them out for this first slice.
+This goes beyond what was asked, and changing the definition is Nordvet's call, not ours.
+To discuss with Mette, then possibly add later (see Next steps).
+Rejected for now:
+- counting them as no-shows (changes the agreed metric without the client)
+- adding a `late_cancellations` column now (useful, but not requested; better built once
+  Nordvet has said what a late cancellation means)
+
 **D-fields - patient_ref and vet_id not stored; updated_at, cancelled_at, deleted_at and created_at kept.**
 `patient_ref` and `vet_id` are dropped in Python before loading, so they never reach disk.
 `created_at` is kept although nothing uses it yet: it is cheap and allows a later
@@ -440,6 +456,9 @@ Candidates (Claude's suggestions: keep, edit or delete):
 - Test whether `from`/`to` mean the clinic's local date or UTC (needs an appointment near
   midnight, e.g. an emergency/out-of-hours clinic; matters only if opening hours change)
 - Add alerting when a clinic's no-show rate spikes
+- Late cancellations (D-late-cancellations): discuss with Mette whether a cancellation
+  recorded after the appointment started is really a no-show; then add a separate
+  `late_cancellations` count to the daily mart, or fold them into the rate if Nordvet agrees
 - Lead-time analysis using `created_at`: do bookings made far ahead (or last minute) no-show more?
 - Add pytest for the API client (pagination, token expiry) and run checks in GitHub Actions
 - Faster raw insert for big backfills (e.g. DuckDB reading a temporary JSON/Parquet file
