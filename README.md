@@ -221,7 +221,9 @@ as possible. The Python and dbt code stays the same apart from the database it w
   the dedupe, `timezone()`, `strftime`, `datediff`), and the raw loader switches from DuckDB
   to an Azure SQL connection.
 - **Power BI** reads the two marts, refreshed after the job. Mette gets the morning view by
-  email subscription or in Teams (e.g. via Power Automate), so she doesn't need to open anything.
+  email subscription or in Teams (e.g. via Power Automate), so there's nothing extra to open.
+  To check with Nordvet first: subscription emails and sharing need Power BI Pro (or Premium
+  Per User / capacity), so this depends on what their licence includes. Not verified yet.
 
 **Rough monthly cost** (list prices checked 9 Nov 2026, USD; confirm in the Azure pricing
 calculator for Nordvet's region):

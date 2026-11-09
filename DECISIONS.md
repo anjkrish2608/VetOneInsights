@@ -4,9 +4,12 @@ Each entry: what I chose, why, and what I rejected.
 (Draft carried over from planning. Rewrite these in your own words before submitting.)
 
 ## Repo
-**D1 - .gitignore template: Python.**
+**D1 - .gitignore template: Python.** Hosted on GitHub.
 Rejected: Node (not a JS project), Terraform (Azure hosting is described, not built),
 none (would reinvent what the Python template already covers).
+Added on top: `data/` (API pulls and the database: the brief asks for no data dumps), `.env`,
+`*.duckdb`, `*.db`, `*.sqlite` and `*.pdf` (the case brief contains the client secret).
+Change if: reviewers need a small sample file, in which case add an exception for that one file.
 
 **D2 - No license.**
 Rejected: MIT and others. A case submission doesn't need one and the work stays mine.
@@ -53,7 +56,12 @@ Rejected:
   - pandas in memory
   - Postgres or SQL Server in Docker (setup risk on the demo laptop)
   - Azure SQL directly (needs a cloud account, costs money)
-- Production story: Azure SQL or Fabric, with Power BI on top.
+  - upserting by appointment id, only when the incoming `updated_at` is newer (the SQLite-era
+    load; it worked and was safe to re-run, but overwrites each row, so the history of status
+    changes is lost and there's nothing for dbt tests to check against)
+- Note: the SQLite-era log rejected DuckDB as "an extra tool with no clear gain at this size".
+  dbt changed that: dbt-duckdb gives tests and lineage with nothing to install beyond pip.
+- Production story: Azure SQL or Fabric, with Power BI on top (D-azure).
 
 ## Tooling and repo structure
 **D-python - Python 3.13 for the project venv (decided 9 Nov).**
@@ -118,6 +126,12 @@ Rejected:
 **D-batch - Daily batch, not real-time.**
 Mette's question is about yesterday, every morning. Real-time adds cost and
 running complexity for a two-person IT team, and the API is slow to wake up.
+No-shows are recorded about a day late (D-settled), so real-time would only show wrong
+numbers faster. It's also cheaper, which matters for Karin's cost test.
+Rejected: real-time or streaming (Anders, Head of Digital, asked for it; it adds cost and no
+usable accuracy for this question).
+Change if: Nordvet adds a use case that acts within the hour, such as reassigning a vet when
+a patient doesn't arrive.
 
 ## Metric
 **D-formula - no-show rate = no_show / (completed + no_show).**
@@ -129,12 +143,52 @@ Yesterday is shown per clinic as confirmed no-shows plus a separate
 The lower/upper range is kept as two columns:
 - lower = no_show / (completed + no_show + awaiting): every awaiting appointment turns out completed
 - upper = (no_show + awaiting) / (completed + no_show + awaiting): every awaiting one is a no-show
+Why: statuses are finalised at different speeds (see D-settled). Completions are recorded
+within hours, but no-shows about a day later, so at 8am yesterday's no-shows are mostly still
+`booked`. Evidence (SQLite era, 6 Nov): 241 past appointments were still `booked`, 81 of them
+from earlier days (2-5 Nov: 3, 2, 20, 56), with more unresolved the more recent the day. For
+5 Nov at 8am: 13 confirmed no-shows and 56 still booked, i.e. 1.8% confirmed vs 8.9% if every
+unresolved booking became a no-show. A rate for yesterday alone would mislead Mette; counts that
+can be read at a glance would not. Settled days give a stable ranking.
+Rejected:
+- counting unresolved bookings as no-shows (overstates: most turn out completed)
+- ignoring them (understates, and hides the gap)
+- a range as the only view (too wide on a single day to tell clinics apart)
+Change if: Mette would rather wait a few days for final numbers, or VetOne offers a faster
+way to record no-shows.
 
 **D-settled - The last 3 days count as unsettled.**
 They are left out of the clinic-ranking rate.
 Precisely: a day is settled when `days_ago > 3` (as of today, Mon 9 Nov: 5 Nov and earlier).
+In practice the earliest settled day is read about 3.5-4 days after its appointments.
 The 3 is a dbt variable (`unsettled_days` in dbt_project.yml), so it can be raised without
 touching SQL if more history shows no-shows arrive later.
+Why 3 - how long after the appointment each status is recorded (`updated_at` - `scheduled_at`):
+
+| Status | SQLite era, 7-day window (6 Nov) | Re-measured 9 Nov, Sep-Oct appointments |
+|---|---|---|
+| completed | median 2.0h, 90% within 3.2h | median 2.0h, 90% within 3.2h (99.6% within 3 days) |
+| no_show | min 15.1h, median 25.2h, 90% within 53.6h, max 117.2h | min 14.8h, median 25.4h, 90% within 66.5h, max 126.3h |
+| cancelled | median 20.8h *before* start, 90% by 2.1h after | median 20.5h before start, 90% by 2.9h after, max 5.0h after |
+
+The SQLite-era window was only 7 days, so slow no-shows fell outside it ("censored") and the
+lag looked shorter (90% within ~2.2 days). With 9 weeks of data: 92.3% of no-shows are
+recorded within 3 days and 96.1% within 4.
+Supporting evidence: no `booked` rows are left for any September day (checked in the SQLite era
+and again 9 Nov), and on 9 Nov only 3 appointments on settled days were still awaiting a status.
+Known limit: a few no-shows arrive later (the slowest took about 5 days), so the ranking
+slightly understates every clinic's rate.
+Is the lag equal across clinics? (open in the SQLite era, checked 9 Nov) Not exactly: the share
+of no-shows recorded within 3 days ranges from 82.5% (Jönköping) to 100% across the 38 active
+clinics; the slowest are Jönköping, Odense S, Esbjerg, Aarhus C and Hellerup. Within 4 days,
+every clinic is at 93% or more. Small clinics have few no-shows (42-70 at the slowest), so part
+of the spread is noise, and it barely correlates with the no-show rate (-0.2). The bias could
+move a clinic's rate by a few tenths of a point, not change the ranking, where the gaps between
+best and worst are 15+ points.
+Change if: more history shows the lag getting longer, or a clinic's late recording grows; then
+raise `unsettled_days` to 4.
+Rejected: 1 day (40% of no-shows recorded) or 2 days (81%), measured 9 Nov; 7 days (100%
+recorded, but the ranking would lag a week behind for about 4 points more completeness).
 
 **D-last-open-day - Mette's "yesterday" is the last day any clinic was open (decided 9 Nov).**
 Clinics are closed on Sundays, so on Mondays calendar yesterday has no appointments and the
@@ -194,6 +248,11 @@ Rejected for now:
 `patient_ref` and `vet_id` are dropped in Python before loading, so they never reach disk.
 `created_at` is kept although nothing uses it yet: it is cheap and allows a later
 lead-time analysis (how far ahead was the booking made, and do late bookings no-show more?).
+Why not `patient_ref`: it's patient-related, and a clinic-level no-show view doesn't need it.
+Why not `vet_id`: vet-level reporting is out of scope for Mette's question.
+Change if: Nordvet wants vet-level reporting, or wants to dig into an outlier clinic (e.g. is
+Aarhus C's 24% driven by one vet's diary?). Then add `vet_id` to the loader and re-run the
+backfill; `patient_ref` should stay out unless there's a clear, agreed purpose.
 
 ## Findings
 **D-findings - FINDINGS.md short list for Mette.**
@@ -327,6 +386,15 @@ The API accepts some bad input with 200 OK and quietly returns the wrong thing:
 So: `include_deleted` is hard-coded to the string "true" in one place; `from` <= `to` and
 "both or neither" are checked before calling; a backfill returning 0 rows logs a warning.
 Plain `if` statements that fail with a clear message.
+Lesson learned (SQLite era): the first history pull stopped after one page, reported success,
+and was 7 weeks short. The API was fine: probing four filter combinations (from/to, no `to`, a
+different start date, a smaller `limit`) all returned a `next_cursor`. The bug was a missing
+line in my own loop that read the cursor from each response. A pull that quietly returns too
+little is worse than one that fails, so today's code guards against it:
+- every pull logs how many pages and rows it fetched, and why it stopped (no `next_cursor`)
+- paging stops with an error at 1,000 pages instead of looping forever
+- a backfill returning 0 rows logs a warning; so does one whose bookings reach the window's end
+- the dbt test `assert_daily_mart_reconciles_to_staging` catches rows lost between layers
 Rejected:
 - trusting the API to reject bad input (it doesn't in these cases)
 - a validation library such as pydantic (too much to explain for three or four checks)
@@ -346,6 +414,12 @@ Rejected:
 - Network errors and timeouts (no response at all, e.g. the API waking up): treated like a 500,
   same 4 retries and pauses.
 - Other 4xx: never retry; the request itself is wrong, so fail at once with the message.
+- Timeout: 60 seconds per request. The API scales to zero when idle, so the first call of a
+  run can take about 20 seconds while it wakes up; 60 leaves room without hanging forever.
+  (Flagged "needs explanation" in the SQLite-era log.)
+- SQLite-era full history pull, for comparison: 4 rate limits with `Retry-After` of 20, 19, 2
+  and 1 seconds, and 3 transient 500s, all fine on the first retry. That run is where "wait
+  for the header, not a fixed pause" came from.
 One small function with a loop, no retry framework.
 Rejected:
 - refreshing early by reading `exp` (relies on an undocumented token format)
@@ -416,6 +490,10 @@ Rejected:
 - `scheduled_at_local` = local wall-clock time (e.g. 08:00), for time-of-day views.
 Rejected: converting UTC back through each clinic's timezone (needs a join to clinics and
 gives the same answer, since VetOne already sends local time).
+So "a day" runs midnight to midnight in each clinic's own time. The API gives every clinic a
+timezone (Europe/Copenhagen or Europe/Stockholm); both share the same clock, and the offsets
+switch correctly at the 25 Oct clock change (summer and winter both checked).
+Change if: Mette wants one company-wide cut-off time instead.
 
 **D-test-severity - Unknown `service` values warn; unknown `status` values fail the run.**
 Status drives the no-show metric, so an unexpected status must stop the run before Mette
@@ -500,7 +578,12 @@ Found during the API exploration on 9 Nov 2026. Raw responses are saved in `data
     (SE), marked `active: false`, with appointments until September and none since. 24 DK,
     15 SE. Clinics have 7 fields: `id`, `name`, `city`, `country`, `timezone`
     (Europe/Copenhagen or Europe/Stockholm), `active`, `opened_on`. `/v1/clinics` is one page
-    (no `next_cursor`). -> D-clinics; inactive clinic handling to decide in the marts.
+    (no `next_cursor`), with no duplicate ids. -> D-clinics, D-inactive
+12. **Response shape and timestamp formats** (first seen in the SQLite era). Records sit under
+    a `data` key, not at the top level, with `next_cursor` next to it. `scheduled_at` is the
+    clinic's local time with an offset and no seconds (`2026-11-05T08:00+01:00`);
+    `created_at`, `updated_at`, `cancelled_at` and `deleted_at` are UTC with `Z`
+    (`2026-10-29T12:27:41Z`). -> D-timestamps
 
 Tooling notes (not the API, but found while building):
 - **DuckDB `cast(... as timestamp)` silently drops the UTC offset.**
@@ -520,6 +603,11 @@ Candidates (Claude's suggestions: keep, edit or delete):
 - Build a Power BI report on the final view for Mette
 - Test whether `from`/`to` mean the clinic's local date or UTC (needs an appointment near
   midnight, e.g. an emergency/out-of-hours clinic; matters only if opening hours change)
+- Check what Nordvet's Power BI licence includes before promising Mette a subscription email:
+  subscriptions and sharing need Pro (or Premium Per User / capacity). Not verified yet.
+- Re-check the no-show recording lag per clinic as history grows (D-settled): Jönköping is
+  slowest today (82.5% within 3 days); raise `unsettled_days` if that gets worse
+- Vet-level view for outlier clinics (D-fields): add `vet_id` if Nordvet wants it
 - Add alerting when a clinic's no-show rate spikes
 - A mart for no-shows by service and weekday (D-findings-staging), so FINDINGS.md findings
   4 and 5 are built and tested every run instead of queried by hand
