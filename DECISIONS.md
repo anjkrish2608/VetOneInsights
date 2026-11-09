@@ -3,6 +3,16 @@
 Each entry: what I chose, why, and what I rejected.
 (Draft carried over from planning. Rewrite these in your own words before submitting.)
 
+**Format** (ADR, Architecture Decision Record; details in CLAUDE.md):
+- **Decision** = the bold title line (what I chose)
+- **Context** = why: the situation and evidence, linked to [docs/vetone_api_notes.md](docs/vetone_api_notes.md) where it came from the API
+- **Rejected** = the options I considered and why not
+- **Consequences** = trade-offs and "Change if", where relevant
+- **Status** = Accepted unless the entry says "changed" (with a date) or "superseded"
+
+Entries marked `> **REVIEW:**` are missing a required part or have a thin "why"; search for
+`REVIEW:` to find them.
+
 ## Contents
 
 - [Repo](#repo): D1, D2, D-branch
@@ -133,6 +143,9 @@ Rejected:
 - Azure Key Vault (right for production, overkill on a laptop; it's in the Azure story)
 
 **D-logging - Python logging module, with row counts and run time per step.**
+> **REVIEW:** thin Why: only the rejected option is given. Possible why: CLAUDE.md asks
+> for rows fetched, rows loaded and time taken; log levels (INFO/WARNING/ERROR) let a failed
+> run stand out; the same lines go to Azure Monitor in production (D-azure).
 Rejected: print statements (can't be filtered or sent to Azure Monitor later).
 
 **D-structure - Flat, small repo: `ingestion/`, `nordvet_dbt/`, `data/` (gitignored), `docs/`.**
@@ -418,6 +431,9 @@ Rejected:
 
 ## Metric
 **D-formula - no-show rate = no_show / (completed + no_show).**
+> **REVIEW:** thin Why (one line) and no Rejected options. Possible rejected options:
+> no_show / all appointments (cancellations would dilute the rate), no_show / (completed +
+> no_show + cancelled), counting late cancellations as no-shows (see D-late-cancellations).
 Cancelled appointments are excluded, because a cancelled slot isn't a no-show.
 
 **D-metric - Unresolved past `booked` rows.**
@@ -514,6 +530,9 @@ Rejected for now:
   Nordvet has said what a late cancellation means)
 
 **D-fields - patient_ref and vet_id not stored; updated_at, cancelled_at, deleted_at and created_at kept.**
+> **REVIEW:** no "Rejected" section. The "Why not `patient_ref`" and "Why not `vet_id`"
+> lines are the rejected options; label them as Rejected (e.g. "storing every field the
+> API sends").
 `patient_ref` and `vet_id` are dropped in Python before loading, so they never reach disk.
 `created_at` is kept although nothing uses it yet: it is cheap and allows a later
 lead-time analysis (how far ahead was the booking made, and do late bookings no-show more?).
@@ -525,6 +544,9 @@ backfill; `patient_ref` should stay out unless there's a clear, agreed purpose.
 
 ## Findings
 **D-findings - FINDINGS.md short list for Mette.**
+> **REVIEW:** thin Why (it doesn't say why a short list suits Mette) and no labelled
+> Rejected section. Slides and a Power BI report are mentioned below but not as rejected
+> options with a reason (the brief says no slides; a Power BI report was out of time).
 No slides, and no Power BI report unless time allows.
 Parquet/CSV only as an optional export of the final view for Power BI.
 

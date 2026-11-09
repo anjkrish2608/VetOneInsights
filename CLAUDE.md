@@ -139,14 +139,19 @@ Don't add folders or files beyond this without asking.
 - **Handled:** what the pipeline does about it, with the D-… decision it led to
 (or "not handled yet" and why). Unconfirmed behaviour goes under "Not yet observed".
 
-**Every decision** in `DECISIONS.md` has an id (D-…) and at minimum:
-- **What:** the choice, in the bold title line
-- **Why:** the reason, with evidence where there is some
-- **Rejected:** the alternatives considered, each with why not
-Add when relevant (recommended, based on the usual ADR format):
-- **Trade-offs:** what this choice costs or makes harder
-- **Change if:** the condition that would reopen it
-- **Date** if it was changed, and what it replaced
+**Every decision** in `DECISIONS.md` has an id (D-…) and follows the ADR format
+(Architecture Decision Record). Our original three fields map onto it like this:
+
+| ADR field | Our field | What goes in it | Required? |
+|---|---|---|---|
+| Status | (new) | Accepted, Changed (date, what it replaced) or Superseded (by which D-…). Default: Accepted | Yes; may be left implicit when Accepted |
+| Context | **Why** | The situation and the evidence that forced a choice; link to the API note it came from | Yes |
+| Decision | **What** | The choice itself, in the bold title line | Yes |
+| Considered options | **Rejected** | Each alternative and why not. Not in the original ADR template; added by MADR (Markdown ADR) and kept here because it's what an interviewer asks about | Yes |
+| Consequences | Trade-offs, Change if | What the choice costs or makes harder, and the condition that would reopen it | Recommended |
+
+If a required field is missing or too thin, mark the entry with a line starting
+`> **REVIEW:**` saying what's missing, so it can be found with a search and fixed by hand.
 Keep the two apart: a fact about VetOne goes in the API notes; a choice that could have
 gone another way goes in DECISIONS.md. Link them both ways (note -> D-…, D-… -> note).
 
