@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_vetone__clinics
+    description: >
+      One row per clinic, taken from the latest /v1/clinics snapshot.
+      Includes inactive clinics (CL-420 Ystad); marts decide what to show.
+    columns:
+      - name: clinic_id
+        description: VetOne clinic id, e.g. CL-965. Primary key.
+        data_tests: [unique, not_null]
+      - name: clinic_name
+        description: Clinic name, e.g. "Nordvet København Ø".
+        data_tests: [not_null]
+      - name: city
+        description: City the clinic is in.
+      - name: country
+        description: Country code, DK or SE.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["DK", "SE"]
+      - name: timezone
+        description: IANA timezone, Europe/Copenhagen or Europe/Stockholm.
+      - name: is_active
+        description: False for closed clinics (CL-420 Ystad, no appointments since September).
+        data_tests: [not_null]
+      - name: opened_on
+        description: Date the clinic opened.
+      - name: _loaded_at
+        description: UTC time the snapshot was loaded.

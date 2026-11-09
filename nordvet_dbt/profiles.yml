@@ -8,3 +8,5 @@ nordvet:
       type: duckdb
       path: "{{ env_var('DUCKDB_PATH', 'data/nordvet.duckdb') }}"
       threads: 1
+      settings:
+        timezone: UTC  # timestamptz values are compared and shown in UTC (D-timestamps)

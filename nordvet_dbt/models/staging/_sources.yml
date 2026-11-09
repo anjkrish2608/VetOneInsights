@@ -1,0 +1,36 @@
+version: 2
+
+sources:
+  - name: vetone
+    description: >
+      Raw VetOne API data, appended by the Python ingestion (ingestion/load_raw.py).
+      Append-only: every run adds rows; nothing is updated or deleted here.
+    schema: main
+    tables:
+      - name: raw_appointments
+        description: >
+          One row per appointment per run in which it was fetched (new or changed).
+          The same appointment id appears many times as its status changes.
+          Values are as the API sent them; timestamps are text.
+          patient_ref and vet_id are dropped before loading.
+        columns:
+          - name: id
+            description: VetOne appointment id, e.g. apt_1117b9402a67.
+            data_tests: [not_null]
+          - name: updated_at
+            description: UTC time of the last change in VetOne; drives the incremental load.
+            data_tests: [not_null]
+          - name: _run_id
+            description: Pipeline run that loaded the row (UTC start time, e.g. 20261109T130505Z).
+          - name: _loaded_at
+            description: UTC time the row was loaded.
+      - name: raw_clinics
+        description: >
+          Full snapshot of /v1/clinics, appended every run (D-clinics).
+          One row per clinic per run.
+        columns:
+          - name: id
+            description: VetOne clinic id, e.g. CL-965.
+            data_tests: [not_null]
+          - name: _run_id
+            description: Pipeline run that loaded the snapshot.

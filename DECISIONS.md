@@ -246,6 +246,22 @@ going inactive) at a cost of 39 rows a day.
 Rejected: overwriting the clinics table each run (simpler to query, but breaks the append-only
 rule and loses when a clinic changed).
 
+## dbt models
+**D-materialization - Staging models are views; marts are tables.**
+Staging is a thin cleanup over raw, so a view always shows the latest raw rows and costs
+nothing to store. Marts are what Power BI and Mette read, so they are built once per run as
+tables: fast to query, and a stable copy if a later run fails halfway.
+Rejected:
+- everything as tables (duplicates raw in staging for no gain at this size)
+- everything as views (Power BI would re-run the whole chain on every refresh)
+- incremental models (not needed at ~50,000 rows; full rebuild takes under a second)
+
+**D-stg-clinics - `stg_vetone__clinics` takes the newest snapshot by `_run_id`.**
+`_run_id` is the run's UTC start time (e.g. 20261109T130505Z), so the highest one is the
+latest load. Inactive clinics are kept in staging; the marts decide whether to show them.
+Rejected: latest row per clinic id across all snapshots (would keep a clinic that VetOne
+has removed entirely).
+
 ## API quirks found
 Found during the API exploration on 9 Nov 2026. Raw responses are saved in `data/explore/`
 (gitignored, so local only).
