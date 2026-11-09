@@ -16,12 +16,14 @@ ranking_rates as (
     union all
     select clinic_id, 'no_show_rate_history', no_show_rate_history
     from {{ ref('mart_clinic_noshow_ranking') }}
-)
+),
 
-select *
-from (
+all_rates as (
     select * from daily_rates
     union all
     select * from ranking_rates
-) as all_rates
+)
+
+select *
+from all_rates
 where rate < 0 or rate > 1
