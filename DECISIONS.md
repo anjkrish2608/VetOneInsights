@@ -134,9 +134,15 @@ so 500 means the fewest calls without relying on undocumented behaviour.
 `from` and `to` are both needed because leaving one out changes the window a lot:
 `to` alone returns all history back to 31 Jul 2026; `from` alone runs a month into future bookings.
 Both dates are inclusive and are the clinic's local date.
-Backfill start date: 1 Sep 2026 (set as `BACKFILL_FROM` in .env), to the run date.
+Backfill start date: 1 Sep 2026 (set as `BACKFILL_FROM` in .env), to the run date + 90 days.
 This gives a 9-week baseline, matching the SQLite-era choice. History starts 31 Jul 2026,
 but the extra month adds calls for little gain.
+Why end 90 days ahead (changed 9 Nov, was "to the run date"): a booking made before the
+backfill for a future date, and never changed afterwards, would never come back through
+`updated_since`, so it would be missing from the "awaiting status" count. With the window
+reaching past every existing booking (the API showed bookings ~30 days ahead), every
+appointment is either in the backfill or created after it, and so caught incrementally.
+The run logs a warning if bookings reach the last day of the window.
 Rejected:
 - `limit=1000` or higher (works, but only because it is quietly capped; misleading to read)
 - the default limit of 100 (5x more calls on a rate-limited API)
