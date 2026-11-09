@@ -105,7 +105,10 @@ The lower/upper range is kept as two columns.
 **D-settled - The last 3 days count as unsettled.**
 They are left out of the clinic-ranking rate.
 
-**D-fields - patient_ref and vet_id not stored for now; updated_at and cancelled_at kept.**
+**D-fields - patient_ref and vet_id not stored; updated_at, cancelled_at, deleted_at and created_at kept.**
+`patient_ref` and `vet_id` are dropped in Python before loading, so they never reach disk.
+`created_at` is kept although nothing uses it yet: it is cheap and allows a later
+lead-time analysis (how far ahead was the booking made, and do late bookings no-show more?).
 
 ## Findings
 **D-findings - FINDINGS.md short list for Mette.**
@@ -131,6 +134,9 @@ so 500 means the fewest calls without relying on undocumented behaviour.
 `from` and `to` are both needed because leaving one out changes the window a lot:
 `to` alone returns all history back to 31 Jul 2026; `from` alone runs a month into future bookings.
 Both dates are inclusive and are the clinic's local date.
+Backfill start date: 1 Sep 2026 (set as `BACKFILL_FROM` in .env), to the run date.
+This gives a 9-week baseline, matching the SQLite-era choice. History starts 31 Jul 2026,
+but the extra month adds calls for little gain.
 Rejected:
 - `limit=1000` or higher (works, but only because it is quietly capped; misleading to read)
 - the default limit of 100 (5x more calls on a rate-limited API)
@@ -180,8 +186,55 @@ Rejected:
 - treating 429 like other 4xx and failing (broke the SQLite-era history pull)
 - tenacity / urllib3 Retry (extra dependency, harder for Emil's team to read)
 
+**D-atomic - Each pull is loaded all-or-nothing, in one transaction.**
+All pages are collected first, then inserted in a single transaction. A crash or API failure
+mid-pull leaves raw exactly as it was.
+Why: the backfill comes back sorted by `scheduled_at`, not `updated_at`. If half a backfill
+were saved, the next run would take its watermark from that half and silently skip the older
+appointments it never fetched. "Raw only ever holds complete pulls" keeps the watermark
+trustworthy. About 50,000 rows fit easily in memory.
+Rejected:
+- saving page by page and resuming (needs a separate progress record; more to explain and maintain)
+
+**D-metadata - Every raw row gets `_loaded_at` and `_run_id`.**
+Shows which run loaded which rows ("this run loaded X rows"), and helps trace a bad load.
+Cheap: two columns.
+Rejected: no metadata (simpler, but rows can't be traced back to a run).
+
 ## API quirks found
-(Log each one here: what you saw, the evidence, what you decided to do about it.)
+Found during the API exploration on 9 Nov 2026. Raw responses are saved in `data/explore/`
+(gitignored, so local only).
+
+1. **Deleted appointments are hidden by default.** Default 7-day pull: 5,442 rows; with
+   `include_deleted=true`: 5,496, of which 53 had a `deleted_at` field. Deleted rows keep a
+   normal status (e.g. `completed`). `deleted_at` is never after `updated_at`. -> D-deleted
+2. **`include_deleted` silently ignores values it doesn't recognise.** `true`/`True` work;
+   `1`/`yes` return 200 with no deleted rows. -> D-validate
+3. **`updated_since` drops the default 7-day window.** It returned appointments from 28 Oct
+   (late status changes) and future bookings to 9 Dec. -> D-incremental
+4. **`updated_since` includes the boundary; `updated_at` is mostly whole minutes** (4,576 of
+   5,442 end in `:00`). Rows stamped exactly at the watermark come back again. -> D-incremental
+5. **`updated_since` timezones:** `Z`, `+01:00`, `-05:00` and no offset give identical results
+   (no offset = UTC). An unencoded `+` gets `400 invalid updated_since`. A bare date is
+   accepted as midnight UTC.
+6. **Leaving out `from` or `to` changes the window a lot.** No params: 7 days back to today.
+   `from` only: open-ended into future bookings. `to` only: all history from 31 Jul 2026.
+   `from` after `to`: 200 with 0 rows. Dates are inclusive; a datetime gets a 400.
+   -> D-backfill, D-validate
+7. **`limit` is silently capped at 500.** Default 100; 0, -1 and text get a 400. -> D-backfill
+8. **The cursor carries its own filters.** It is signed base64 JSON (filters, an as-of
+   timestamp, sort key `scheduled_at` + `id`). Filters sent with a cursor are ignored; an
+   edited cursor gets `400 invalid cursor`. No duplicate ids within any full pull.
+9. **Tokens last 60 minutes**, but the token response only has `access_token` and
+   `token_type`; the expiry is inside the token itself. -> D-errors
+10. **Transient errors.** About 1 in 15 calls got `500 temporary error, please retry` (all
+    succeeded on retry). Paging at ~3 requests/s triggered 429s with `Retry-After` of 1-12s.
+    -> D-errors
+
+Data quality on 74,238 rows (Jul-Dec): no nulls in key fields, only the 4 known statuses,
+no unknown clinic ids, `cancelled_at` set exactly when cancelled, `scheduled_at` offsets switch
+correctly at the 25 Oct clock change, duration is fixed per service. Inactive CL-420 (Ystad)
+had appointments until September.
 
 ## Next steps / what I'd change with more time
 Candidates (Claude's suggestions: keep, edit or delete):
@@ -190,4 +243,5 @@ Candidates (Claude's suggestions: keep, edit or delete):
 - Build a Power BI report on the final view for Mette
 - Handle deleted appointments explicitly (include_deleted)
 - Add alerting when a clinic's no-show rate spikes
+- Lead-time analysis using `created_at`: do bookings made far ahead (or last minute) no-show more?
 - Add pytest for the API client (pagination, token expiry) and run checks in GitHub Actions
