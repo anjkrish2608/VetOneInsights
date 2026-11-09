@@ -7,6 +7,7 @@ text); dbt staging casts and dedupes. Each run's rows go in one transaction
 
 import logging
 import pathlib
+import time
 from datetime import datetime
 
 import duckdb
@@ -123,6 +124,7 @@ def load_run(
         f"insert into raw_clinics ({', '.join(CLINIC_COLUMNS)}, _run_id, _loaded_at)"
         f" values ({', '.join('?' * (len(CLINIC_COLUMNS) + 2))})"
     )
+    started = time.monotonic()
     con.execute("begin transaction")
     try:
         if appt_rows:
@@ -134,8 +136,9 @@ def load_run(
         con.execute("rollback")
         raise
     log.info(
-        "Loaded run %s: %s appointment rows, %s clinic rows",
+        "Loaded run %s: %s appointment rows, %s clinic rows (%.1fs)",
         run_id,
         len(appt_rows),
         len(clinic_rows),
+        time.monotonic() - started,
     )
