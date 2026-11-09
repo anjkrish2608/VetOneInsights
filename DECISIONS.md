@@ -20,9 +20,18 @@ Rejected:
 - a new repo (loses the history)
 
 ## Language
-**D-lang - Python for ingestion (provisional).**
-Still to decide properly. Alternatives considered: SQL only, Power Query,
-PowerShell, Azure Data Factory.
+**D-lang - Python for ingestion (decided 9 Nov; was provisional).**
+Python handles only the API part: login, paging, retries, token refresh and appending raw rows.
+Everything after that is SQL in dbt. dbt has no way to call an API, so something has to do
+this step. In Python it is about 200 lines of plain functions that Emil's team can read, and
+it is built and tested against the live API (backfill, incremental runs, failure paths).
+Rejected:
+- SQL only (can't page through an API, refresh tokens or retry errors)
+- Power Query (tied to a Power BI refresh; can't append to a raw table or handle retries
+  the way this API needs)
+- PowerShell (less common in data teams; clumsier JSON handling)
+- Azure Data Factory (needs a cloud account and costs money for a laptop demo; a fair
+  production option for Nordvet, covered in the README's Azure section)
 
 ## Storage and transformation
 **D3 - Storage and transformation: DuckDB + dbt (revised 9 Nov).**
