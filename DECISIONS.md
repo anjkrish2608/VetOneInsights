@@ -262,6 +262,35 @@ latest load. Inactive clinics are kept in staging; the marts decide whether to s
 Rejected: latest row per clinic id across all snapshots (would keep a clinic that VetOne
 has removed entirely).
 
+**D-dedupe - `stg_vetone__appointments` keeps the latest version per id, then drops deleted.**
+`qualify row_number() over (partition by id order by updated_at desc, _loaded_at desc) = 1`.
+`_loaded_at` breaks ties when the same version was fetched twice (the inclusive watermark
+overlap, D-incremental). Dedupe happens *before* the deleted filter: if an appointment is
+deleted after we loaded it, its newest version is the deleted one, so it disappears. Filtering
+first would let the older, non-deleted version win and stay in the counts.
+Checked 9 Nov: 50,530 raw rows -> 50,489 ids -> 49,787 after removing 702 deleted;
+identical to the same logic recomputed in Python, 0 status mismatches.
+Rejected:
+- deduping in Python before loading (raw would lose the history of status changes)
+- filtering deleted rows before deduping (resurrects deleted appointments, see above)
+- `select distinct` (keeps every version whose status differs)
+
+**D-timestamps - Cast to `timestamptz` with the dbt session in UTC; keep the local date as text gives it.**
+- All timestamps are cast to `timestamptz`, never `timestamp`, which silently drops the
+  offset (see Tooling notes). `profiles.yml` sets the session timezone to UTC.
+- `scheduled_date_local` = the first 10 characters of `scheduled_at` (e.g. 2026-11-05).
+  The API already sends the clinic's local time, so its date part *is* the clinic's day.
+  This is the "day" for all reporting ("yesterday per clinic").
+- `scheduled_at_local` = local wall-clock time (e.g. 08:00), for time-of-day views.
+Rejected: converting UTC back through each clinic's timezone (needs a join to clinics and
+gives the same answer, since VetOne already sends local time).
+
+**D-test-severity - Unknown `service` values warn; unknown `status` values fail the run.**
+Status drives the no-show metric, so an unexpected status must stop the run before Mette
+sees wrong numbers. A new service type doesn't change the metric, so it should be noticed
+(a warning in the run log) without blocking the morning report.
+Rejected: failing on both (a harmless new service would block the report); no service test.
+
 ## API quirks found
 Found during the API exploration on 9 Nov 2026. Raw responses are saved in `data/explore/`
 (gitignored, so local only).
