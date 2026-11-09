@@ -72,7 +72,9 @@
    - want to load 1st of September as it allows a 9 week average
    - appears to be closed on Sundays
    - no booked rows in September therefore the old data is settled, supporting the 3 day exclusion rule
-   - Diagnosed a history pull that stopped after one page. Probed the API with four filter combinations (from/to, no `to`, a different start date, a smaller `limit`): all returned a `next_cursor`, so the API was fine. The cause was a missing line in my own loop that read the cursor from each response. Fix: the pull now prints why it stopped, and warns if the newest appointment is more than 3 days before the end date.
+   - Diagnosed a history pull that stopped after one page. Probed the API with four filter combinations (from/to, no `to`, a different start date, a smaller `limit`): all returned a `next_cursor`, so the API was fine. The cause was a missing line in my own loop that read the cursor from each response. 
+   Fix: the pull now prints why it stopped, and warns if the newest appointment is more than 3 days before the end date.
+   
 
 ## Storage
 - **SQLite as the store, with the business logic in SQL views.** 
@@ -114,7 +116,10 @@
   Change if: Nordvet wants vet-level reporting, in which case I'd add `vet_id` and re-load.
 - **History pull is resumable:** it restarts from the last saved day and de-duplicates by `id`. (Decided, built)
   Why: a backfill of about 235 pages shouldn't start over when it's interrupted, and a live system shouldn't be hit with repeat calls.
-  
+- Lesson: my first history pull stopped after one page, reported success, and was 7 weeks short. The pull now prints why it stopped and warns when the newest appointment is far from the end date.
+- `pull_history.py` is a one-off backfill; the daily run needs different logic (open: fixed window vs `updated_since`).
+- Rate limiting and errors in the full pull: 4 rate limits (429) with Retry-After of 20, 19, 2 and 1 seconds, and 3 transient server errors (500). All succeeded on the first retry. Honour the header instead of a fixed pause.
+
 
 
 ## Metric and reporting rules
@@ -128,6 +133,8 @@
   Rejected: counting unresolved bookings as no-shows (overstates, since some will be completions); ignoring them (understates, and hides the gap); a range as the only view (too wide for yesterday to tell clinics apart).
   Change if: Mette would rather wait a few days for final numbers, or the API offers a faster way to mark no-shows.
 NEED TO CONFIRM NUMBER IN SQL
+- **History loaded from 1september to 6 nov*.** 
+  Why: allows 9 week historic average which is stronger and more reliable 
 
 - **Settled = appointments older than 3 days.** 
   The clinic ranking rate only uses those.
@@ -144,6 +151,8 @@ NEED TO CONFIRM NUMBER IN SQL
 
 - **Money impact = lost vet-minutes from no-shows (`duration_minutes`), not kroner.** 
   Why: the API has no prices. Karin's "where are we losing money" can be mapped to lost billable vet minutes
+
+
 
 ## Pipeline choices
 - **Retry server errors (5xx) up to 4 times with 2/4/8/16s pauses; never retry 4xx.**
