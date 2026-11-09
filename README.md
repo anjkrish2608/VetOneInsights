@@ -17,6 +17,10 @@ VetOne API ──► Python ingestion ──► raw tables ─────► db
                updated_since        ever fetched       deleted removed   and a clinic ranking
 ```
 
+The same flow as dbt draws it from the code (`dbt docs`, see below):
+
+![dbt lineage graph: raw_appointments and raw_clinics feed the two staging models, which feed the daily no-show mart and then the clinic ranking](docs/images/dbt_lineage.png)
+
 ---
 
 ## 1. How to run it
@@ -59,9 +63,29 @@ Then open `.env` and fill in `VETONE_BASE_URL`, `VETONE_CLIENT_ID` and `VETONE_C
 - **First run** (empty database): a backfill from 1 Sep 2026 of about 50,000 appointments,
   taking about 2 minutes. Most of that is waiting when VetOne asks it to slow down.
 - **Every run after that:** only appointments changed since the last run. A few seconds.
-- Then `dbt build` builds every model and runs all 40 data tests. The run ends with
+- Then `dbt build` builds the 4 models and runs all 36 data tests. The run ends with
   `Pipeline run … finished`, or exits with code 1 and a clear `FAILED` message.
 - Safe to re-run at any time: nothing is duplicated or lost.
+
+A first run from a fresh clone on 9 Nov 2026 (dbt's per-test lines shortened):
+
+```text
+INFO    run_pipeline: Pipeline run 20261109T133323Z started
+INFO    ingestion.vetone_client: Logged in to VetOne in 0.1s
+INFO    ingestion.vetone_client: Fetched 39 clinics
+INFO    run_pipeline: Raw is empty: backfilling 2026-09-01..2027-02-07
+WARNING ingestion.vetone_client: Rate limited (429); waiting 52s as Retry-After asks
+INFO    ingestion.vetone_client: Fetched 50495 appointments in 101 pages (67.5s) for 2026-09-01..2027-02-07
+INFO    ingestion.load_raw: Loaded run 20261109T133323Z: 50495 appointment rows, 39 clinic rows
+INFO    run_pipeline: raw_appointments now holds 50495 rows (50495 distinct appointments)
+INFO    run_pipeline: Running dbt build
+        ...
+        Done. PASS=23 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=23
+INFO    run_pipeline: dbt build passed in 13.0s
+INFO    run_pipeline: Pipeline run 20261109T133323Z finished in 131.8s
+```
+
+(That run was before the marts existed. Today `dbt build` has 40 steps: 4 models and 36 tests.)
 
 **See the output:**
 
@@ -82,6 +106,8 @@ Then open `.env` and fill in `VETONE_BASE_URL`, `VETONE_CLIENT_ID` and `VETONE_C
 
   This opens a page in your browser showing every model, column and test with its
   description, and the lineage from the raw tables to the marts. Stop it with Ctrl+C.
+
+  ![dbt docs page for mart_clinic_daily_noshows: description, and the column list with types and tests](docs/images/dbt_docs_daily_mart.png)
 - **Re-run a past morning:** rebuild the marts as of any date (as in FINDINGS.md):
 
   ```bash

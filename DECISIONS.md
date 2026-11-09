@@ -228,6 +228,13 @@ Run it after a pipeline run (DuckDB allows one writer at a time). Tested 9 Nov.
 Rejected for now: hosting the docs as a static site in Azure (small next step); a hand-written
 data dictionary (would go out of date).
 
+**D-images - Screenshots live in `docs/images/` (folder added 9 Nov, approved).**
+Two PNGs taken from `dbt docs`: the lineage graph (raw -> staging -> marts) and the daily
+mart's documentation page. GitHub shows them inline in the README. Terminal output is shown as
+a text block from a real run instead of an image, so it can be read and copied.
+Rejected: videos committed to the repo (large files); screenshots of the run output (text is
+clearer); embedding images from outside the repo (could break later).
+
 **D-findings-snapshot - FINDINGS.md is frozen at Mon 9 Nov 2026 (run 20261109T135405Z).**
 The data is live, so numbers re-run later drift as statuses change. The header states the
 as-of date and load time, and the appendix gives the `as_of_date` command plus the SQL behind
@@ -443,7 +450,8 @@ between midnight and 01:00/02:00).
 - `assert_daily_mart_reconciles_to_staging`: per day, the mart's appointment total equals the
   staging count, so no appointment is lost or double-counted between layers
 Each returns the offending rows, so a failure shows exactly what's wrong. Checked 9 Nov:
-40/40 tests pass; daily mart and ranking spot-checked against raw/staging by hand.
+`dbt build` passes 40/40 (4 models, 36 tests); daily mart and ranking spot-checked against
+raw/staging by hand.
 Rejected: the `dbt_utils` package (a dependency for two or three checks; plain SQL is
 easier for Emil's team to read).
 

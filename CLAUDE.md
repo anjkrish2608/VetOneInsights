@@ -113,6 +113,7 @@ nordvet_dbt/
   models/marts/
   tests/             # singular SQL tests (D-singular-tests)
 data/                # DuckDB file lives here, gitignored
+docs/images/         # README screenshots (D-images)
 ```
 Don't add folders or files beyond this without asking.
 
