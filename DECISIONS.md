@@ -112,6 +112,30 @@ They are left out of the clinic-ranking rate.
 No slides, and no Power BI report unless time allows.
 Parquet/CSV only as an optional export of the final view for Power BI.
 
+## Ingestion
+**D-deleted - Always request `include_deleted=true`; keep `deleted_at`; drop deleted rows in staging.**
+Without the flag, deleted appointments silently disappear from the API. Raw is append-only,
+so a row loaded before it was deleted would otherwise stay in the counts forever.
+With the flag, deleted rows come back with a `deleted_at` timestamp and a normal-looking status.
+Staging keeps the latest version per id first, then drops rows where `deleted_at` is set.
+Evidence (9 Nov): default pull 5,442 rows; same pull with the flag 5,496, of which 53 had `deleted_at`.
+Only `true`/`True` work; `1` or `yes` are silently ignored (200 OK, no deleted rows).
+Rejected:
+- not sending the flag (deleted appointments would be counted as real no-shows/completions)
+- dropping deleted rows in Python before loading (raw should hold what the API said; staging decides)
+- a periodic full reload to catch deletions (heavier on the API, and the flag makes it unnecessary)
+
+**D-backfill - `limit=500`; first run is a one-off backfill with `from` and `to` always sent together.**
+500 is the API's real maximum: higher values are silently capped at 500 (default is 100),
+so 500 means the fewest calls without relying on undocumented behaviour.
+`from` and `to` are both needed because leaving one out changes the window a lot:
+`to` alone returns all history back to 31 Jul 2026; `from` alone runs a month into future bookings.
+Both dates are inclusive and are the clinic's local date.
+Rejected:
+- `limit=1000` or higher (works, but only because it is quietly capped; misleading to read)
+- the default limit of 100 (5x more calls on a rate-limited API)
+- open-ended `from` or `to` (unpredictable size; one test pulled 60,000 rows by accident)
+
 ## API quirks found
 (Log each one here: what you saw, the evidence, what you decided to do about it.)
 
