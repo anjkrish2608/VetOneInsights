@@ -9,6 +9,12 @@ with as_of as (
         {% endif %} as as_of_date
 ),
 
+-- clinics are re-fetched on every successful run, so their load time is the last load
+last_load as (
+    select max(_loaded_at) as last_loaded_at
+    from {{ ref('stg_vetone__clinics') }}
+),
+
 past_appointments as (
     select appointments.*
     from {{ ref('stg_vetone__appointments') }} as appointments
@@ -37,9 +43,11 @@ with_clinic as (
         clinics.country,
         clinics.is_active,
         as_of.as_of_date,
+        last_load.last_loaded_at,
         datediff('day', daily_counts.appointment_date, as_of.as_of_date) as days_ago
     from daily_counts
     cross join as_of
+    cross join last_load
     left join {{ ref('stg_vetone__clinics') }} as clinics
         on daily_counts.clinic_id = clinics.clinic_id
 )
@@ -52,6 +60,7 @@ select
     is_active,
     appointment_date,
     as_of_date,
+    last_loaded_at,
     days_ago,
     days_ago > {{ var('unsettled_days') }}                          as is_settled,
     -- most recent day before as_of with any appointments in the network:

@@ -35,6 +35,12 @@ models:
         data_tests: [not_null]
       - name: as_of_date
         description: The date the mart was built for ("today"); same on every row.
+      - name: last_loaded_at
+        description: >
+          When data was last loaded from VetOne (UTC); same on every row. If it isn't
+          from this morning, the pipeline didn't run or failed, and the numbers are from
+          an earlier day. Meant to be shown as "Data last updated" in Power BI (D-api-change).
+        data_tests: [not_null]
       - name: days_ago
         description: Days between appointment_date and as_of_date; 1 = yesterday.
         data_tests: [not_null]

@@ -7,7 +7,8 @@ Decisions referenced below (D-...) are explained in DECISIONS.md.
 
 import logging
 import time
-from datetime import date, datetime
+from datetime import UTC, date, datetime
+from email.utils import parsedate_to_datetime
 
 import requests
 
@@ -22,6 +23,33 @@ MAX_RATE_LIMIT_WAITS = 20  # 429s: give up if the API keeps saying "slow down"
 MAX_PAGES = (
     1000  # safety stop (500,000 rows): a bug must not loop forever on a live API
 )
+
+
+def _retry_after_seconds(value: str | None) -> int:
+    """Seconds to wait from a Retry-After header: seconds or an HTTP date (D-api-change)."""
+    if value is None:
+        return 5
+    try:
+        return max(0, int(value))
+    except ValueError:
+        pass
+    try:
+        wait = parsedate_to_datetime(value) - datetime.now(UTC)
+        return max(0, int(wait.total_seconds()) + 1)
+    except (TypeError, ValueError):
+        log.warning("Retry-After %r is neither seconds nor a date; waiting 5s", value)
+        return 5
+
+
+def _records(body: object, path: str) -> list[dict]:
+    """Return the rows under 'data'; fail clearly if the response shape has changed."""
+    if not isinstance(body, dict) or not isinstance(body.get("data"), list):
+        shape = sorted(body) if isinstance(body, dict) else type(body).__name__
+        raise TypeError(
+            f"VetOne {path} response has no 'data' list (got {shape}); "
+            "the API format may have changed (D-api-change)"
+        )
+    return body["data"]
 
 
 def _send(method: str, url: str, **kwargs) -> requests.Response:
@@ -45,7 +73,7 @@ def _send(method: str, url: str, **kwargs) -> requests.Response:
             rate_limit_waits += 1
             if rate_limit_waits > MAX_RATE_LIMIT_WAITS:
                 return resp
-            wait = int(resp.headers.get("Retry-After", 5))
+            wait = _retry_after_seconds(resp.headers.get("Retry-After"))
             log.warning("Rate limited (429); waiting %ss as Retry-After asks", wait)
             time.sleep(wait)
             continue
@@ -83,7 +111,14 @@ def get_token(base_url: str, client_id: str, client_secret: str) -> str:
         raise RuntimeError(
             f"VetOne login failed: HTTP {resp.status_code} {resp.text[:200]}"
         )
-    return resp.json()["access_token"]
+    body = resp.json()
+    if not isinstance(body, dict) or "access_token" not in body:
+        shape = sorted(body) if isinstance(body, dict) else type(body).__name__
+        raise RuntimeError(
+            f"VetOne login response has no 'access_token' (got {shape}); "
+            "the API format may have changed (D-api-change)"
+        )
+    return body["access_token"]
 
 
 def connect(base_url: str, client_id: str, client_secret: str) -> dict:
@@ -131,7 +166,7 @@ def fetch_clinics(api: dict) -> list[dict]:
         raise RuntimeError(
             "/v1/clinics returned a next_cursor; pagination is not handled for clinics"
         )
-    rows = body["data"]
+    rows = _records(body, "/v1/clinics")
     log.info("Fetched %s clinics", len(rows))
     return rows
 
@@ -195,10 +230,24 @@ def fetch_appointments(
     rows: list[dict] = []
     for page in range(1, MAX_PAGES + 1):
         body = get_json(api, "/v1/appointments", params)
-        rows.extend(body["data"])
-        log.debug("Page %s: %s rows", page, len(body["data"]))
-        cursor = body.get("next_cursor")
+        page_rows = _records(body, "/v1/appointments")
+        rows.extend(page_rows)
+        log.debug("Page %s: %s rows", page, len(page_rows))
+        # VetOne always sends next_cursor, as null on the last page. If the key is gone,
+        # paging has changed: stop, rather than load one page and call it complete.
+        if "next_cursor" not in body:
+            raise RuntimeError(
+                "VetOne /v1/appointments response has no 'next_cursor' key; paging may "
+                "have changed, so stopping instead of loading a partial pull (D-api-change)"
+            )
+        cursor = body["next_cursor"]
         if not cursor:
+            if len(page_rows) == PAGE_LIMIT:
+                log.warning(
+                    "Last page was full (%s rows) but had no next_cursor. Usually fine, "
+                    "but if it repeats, paging may have changed (D-api-change)",
+                    PAGE_LIMIT,
+                )
             break
         # The cursor carries the original filters; extra params are ignored by the API.
         params = {"cursor": cursor}

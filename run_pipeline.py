@@ -10,6 +10,7 @@ Settings come from environment variables (.env); see .env.example.
 Run from the repo root: DUCKDB_PATH is relative to it, for Python and dbt alike.
 """
 
+import json
 import logging
 import os
 import pathlib
@@ -72,6 +73,12 @@ def ingest(settings: dict[str, str], run_id: str, loaded_at: datetime) -> None:
             )
             if not appointments:
                 log.warning("Backfill returned 0 appointments; check BACKFILL_FROM")
+            elif not any(a.get("deleted_at") for a in appointments):
+                # The 9 Nov backfill had 702 deleted appointments (API note 1).
+                log.warning(
+                    "Backfill has no deleted appointments; include_deleted may have "
+                    "stopped working, so deleted ones would be counted (D-api-change)"
+                )
             elif max(a["scheduled_at"][:10] for a in appointments) >= date_to:
                 log.warning(
                     "Bookings reach the end of the backfill window; raise BACKFILL_DAYS_AHEAD"
@@ -95,8 +102,23 @@ def ingest(settings: dict[str, str], run_id: str, loaded_at: datetime) -> None:
         con.close()  # DuckDB allows one writer: release the file before dbt opens it
 
 
+def _dbt(dbt: str, command: list[str]) -> int:
+    """Run one dbt command (e.g. ["build"]) against the project; return its exit code."""
+    return subprocess.run(
+        [
+            dbt,
+            *command,
+            "--project-dir",
+            str(DBT_PROJECT_DIR),
+            "--profiles-dir",
+            str(DBT_PROJECT_DIR),
+        ],
+        check=False,
+    ).returncode
+
+
 def run_dbt() -> None:
-    """Run `dbt build` (all models and tests); raise if anything fails (D-dbt-run)."""
+    """Check source freshness, then run `dbt build`; raise if anything fails (D-dbt-run)."""
     # Use the dbt installed next to this Python, so the venv's pinned dbt is used
     # even if the venv isn't activated.
     dbt = shutil.which("dbt", path=os.path.dirname(sys.executable))
@@ -105,24 +127,30 @@ def run_dbt() -> None:
             "dbt not found in this Python environment; pip install -r requirements.txt"
         )
     started = time.monotonic()
+
+    # Freshness only warns (D-api-change): a stale source is worth a loud log line,
+    # but a long holiday weekend shouldn't block the morning report.
+    log.info("Checking source freshness")
+    if _dbt(dbt, ["source", "freshness"]) != 0:
+        raise RuntimeError("dbt source freshness failed; see dbt output above")
+    results = json.loads((DBT_PROJECT_DIR / "target" / "sources.json").read_text())
+    for source in results["results"]:
+        if source["status"] != "pass":
+            log.warning(
+                "VetOne data looks stale: newest change is %.0f hours old (%s). "
+                "updated_since or paging may have changed (D-api-change)",
+                source["max_loaded_at_time_ago_in_s"] / 3600,
+                source["unique_id"],
+            )
+
     log.info("Running dbt build")
-    result = subprocess.run(
-        [
-            dbt,
-            "build",
-            "--project-dir",
-            str(DBT_PROJECT_DIR),
-            "--profiles-dir",
-            str(DBT_PROJECT_DIR),
-        ],
-        check=False,
-    )
-    if result.returncode != 0:
+    exit_code = _dbt(dbt, ["build"])
+    if exit_code != 0:
         raise RuntimeError(
-            f"dbt build failed (exit code {result.returncode}); see dbt output above. "
+            f"dbt build failed (exit code {exit_code}); see dbt output above. "
             "This run's raw rows are loaded; fix the cause and re-run."
         )
-    log.info("dbt build passed in %.1fs", time.monotonic() - started)
+    log.info("dbt freshness and build passed in %.1fs", time.monotonic() - started)
 
 
 def main() -> None:

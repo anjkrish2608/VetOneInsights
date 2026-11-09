@@ -13,6 +13,15 @@ sources:
           The same appointment id appears many times as its status changes.
           Values are as the API sent them; timestamps are text.
           patient_ref and vet_id are dropped before loading.
+          Freshness: warns if the newest change VetOne has sent us (max updated_at) is
+          more than 48 hours old. Clinics record statuses every working day, so a gap
+          that long suggests updated_since or paging stopped returning changes
+          (D-api-change). A warning, not an error, so a long holiday weekend can't block
+          the run.
+        config:
+          loaded_at_field: "cast(updated_at as timestamptz)"
+          freshness:
+            warn_after: {count: 48, period: hour}
         columns:
           - name: id
             description: VetOne appointment id, e.g. apt_1117b9402a67.
