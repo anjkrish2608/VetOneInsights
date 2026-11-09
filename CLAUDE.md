@@ -51,7 +51,8 @@ Never edit it.
 - Yesterday per clinic = confirmed no-shows + a separate "awaiting status" count
   (past appointments still in `booked`).
 - Keep lower/upper bound of the rate as two columns.
-- Not storing patient_ref or vet_id. Keep updated_at and cancelled_at.
+- Not storing patient_ref or vet_id (dropped in Python before loading).
+  Keep updated_at, cancelled_at, deleted_at and created_at (see D-fields, D-deleted).
 
 ## How to work with me
 - I'm a data analyst learning data engineering. I must be able to defend every line

@@ -135,6 +135,9 @@ so 500 means the fewest calls without relying on undocumented behaviour.
 `to` alone returns all history back to 31 Jul 2026; `from` alone runs a month into future bookings.
 Both dates are inclusive and are the clinic's local date.
 Backfill start date: 1 Sep 2026 (set as `BACKFILL_FROM` in .env), to the run date + 90 days.
+Note on "90 days": here it means 90 days *ahead* (future bookings), not 90 days of history.
+History is set by the start date (1 Sep). An earlier plan suggested "90 days of history";
+that was replaced by the fixed 1 Sep start.
 This gives a 9-week baseline, matching the SQLite-era choice. History starts 31 Jul 2026,
 but the extra month adds calls for little gain.
 Why end 90 days ahead (changed 9 Nov, was "to the run date"): a booking made before the
@@ -183,10 +186,14 @@ Rejected:
   A daily run fits easily; only the first backfill could cross the hour. Only one retry, because
   a second 401 means the problem isn't expiry (e.g. a rotated secret), and repeated logins could
   lock the account.
-- 429: wait exactly the `Retry-After` seconds, then retry. Seen values: 1-12 seconds.
+- 429: wait exactly the `Retry-After` seconds, then retry. Seen values: 1-12 seconds during
+  exploration, 51 seconds once during the first backfill. Gives up after 20 waits in a row for
+  one call, so a permanently throttled API fails the run instead of waiting forever.
 - 500 ("temporary error, please retry"): retry up to 4 times with 2/4/8/16s pauses, then fail
   loudly and leave the previous data as it was. About 1 in 15 calls hit one on 9 Nov; all
   succeeded on retry.
+- Network errors and timeouts (no response at all, e.g. the API waking up): treated like a 500,
+  same 4 retries and pauses.
 - Other 4xx: never retry; the request itself is wrong, so fail at once with the message.
 One small function with a loop, no retry framework.
 Rejected:
@@ -201,6 +208,9 @@ Why: the backfill comes back sorted by `scheduled_at`, not `updated_at`. If half
 were saved, the next run would take its watermark from that half and silently skip the older
 appointments it never fetched. "Raw only ever holds complete pulls" keeps the watermark
 trustworthy. About 50,000 rows fit easily in memory.
+Cost: rows are inserted with a plain `executemany`. The first backfill (50,474 rows) took
+about 47s to insert, out of 117s for the whole run; daily runs (a few hundred rows) take
+under a second. Accepted for now because it is the simplest code to read.
 Rejected:
 - saving page by page and resuming (needs a separate progress record; more to explain and maintain)
 
@@ -208,6 +218,14 @@ Rejected:
 Shows which run loaded which rows ("this run loaded X rows"), and helps trace a bad load.
 Cheap: two columns.
 Rejected: no metadata (simpler, but rows can't be traced back to a run).
+
+**D-clinics - Clinics are re-fetched every run and appended to `raw_clinics`, not overwritten.**
+The raw layer is append-only for every table (CLAUDE.md), so clinics follow the same rule as
+appointments. Each run adds one full snapshot (39 rows) with `_run_id` and `_loaded_at`;
+staging takes the latest snapshot. It also keeps a history of clinic changes (e.g. a clinic
+going inactive) at a cost of 39 rows a day.
+Rejected: overwriting the clinics table each run (simpler to query, but breaks the append-only
+rule and loses when a clinic changed).
 
 ## API quirks found
 Found during the API exploration on 9 Nov 2026. Raw responses are saved in `data/explore/`
@@ -238,6 +256,17 @@ Found during the API exploration on 9 Nov 2026. Raw responses are saved in `data
 10. **Transient errors.** About 1 in 15 calls got `500 temporary error, please retry` (all
     succeeded on retry). Paging at ~3 requests/s triggered 429s with `Retry-After` of 1-12s.
     -> D-errors
+11. **39 clinics, not 38 as the brief says.** 38 are active; the 39th is CL-420 Nordvet Ystad
+    (SE), marked `active: false`, with appointments until September and none since. 24 DK,
+    15 SE. Clinics have 7 fields: `id`, `name`, `city`, `country`, `timezone`
+    (Europe/Copenhagen or Europe/Stockholm), `active`, `opened_on`. `/v1/clinics` is one page
+    (no `next_cursor`). -> D-clinics; inactive clinic handling to decide in the marts.
+
+Tooling notes (not the API, but found while building):
+- **DuckDB `cast(... as timestamp)` silently drops the UTC offset.**
+  `cast('2026-11-09T13:28:00+01:00' as timestamp)` gives 13:28, not 12:28 UTC. Casting to
+  `timestamptz` (with the session timezone set to UTC) converts correctly. Staging must use
+  `timestamptz` for `scheduled_at`, `updated_at`, `cancelled_at`, `deleted_at`, `created_at`.
 
 Data quality on 74,238 rows (Jul-Dec): no nulls in key fields, only the 4 known statuses,
 no unknown clinic ids, `cancelled_at` set exactly when cancelled, `scheduled_at` offsets switch
@@ -253,3 +282,5 @@ Candidates (Claude's suggestions: keep, edit or delete):
 - Add alerting when a clinic's no-show rate spikes
 - Lead-time analysis using `created_at`: do bookings made far ahead (or last minute) no-show more?
 - Add pytest for the API client (pagination, token expiry) and run checks in GitHub Actions
+- Faster raw insert for big backfills (e.g. DuckDB reading a temporary JSON/Parquet file
+  instead of `executemany`), if the 47s backfill insert ever matters

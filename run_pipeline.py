@@ -21,7 +21,9 @@ from ingestion import load_raw, vetone_client
 
 log = logging.getLogger("run_pipeline")
 
-BACKFILL_DAYS_AHEAD = 90  # past every existing future booking (D-backfill)
+# Days AHEAD of today the backfill reaches, to capture existing future bookings.
+# Not history: history starts at BACKFILL_FROM (D-backfill).
+BACKFILL_DAYS_AHEAD = 90
 REQUIRED_SETTINGS = [
     "VETONE_BASE_URL",
     "VETONE_CLIENT_ID",
