@@ -1,36 +1,19 @@
 # Nordvet no-show pipeline
 
-Every morning, this pipeline pulls appointments for Nordvet's clinics from VetOne and shows
-how each clinic did on the last open day: confirmed no-shows, appointments still awaiting a
-status, and the vet time lost. It also ranks clinics by no-show rate over recent days whose
-numbers have settled. It answers Mette's "how did each clinic do yesterday?" and Karin's
-"where are we losing money?" (in vet hours, since VetOne has no prices). It is a first slice:
-it runs on a laptop today, and the target set-up in Nordvet's Azure is described below.
 
-- **What we found:** [FINDINGS.md](FINDINGS.md)
-- **Why it's built this way:** [DECISIONS.md](DECISIONS.md) (decisions are referred to as D-… below)
-- **What the VetOne API actually does:** [docs/vetone_api_notes.md](docs/vetone_api_notes.md)
+## The problem
 
-```
-VetOne API ──► Python ingestion ──► raw tables ─────► dbt staging ─────► dbt marts ─────► Power BI
-               login, paging,       append-only:       latest version    one row per          FINDINGS.md
-               retries,             every version      per appointment,  clinic per day,
-               updated_since        ever fetched       deleted removed   and a clinic ranking
-```
+## Quickstart
+### Prerequisites:
+- Windows
+- git 
+-  **Python 3.13**. dbt doesn't install on Python 3.15 yet (D-python)
 
-The same flow as dbt draws it from the code (`dbt docs`, see below):
+####  you don't hav.13: `py install 3.13` with the Python install manager, or the installer from python.org. You also need VetOne API credentials from Nordvet IT.
 
-![dbt lineage graph: raw_appointments and raw_clinics feed the two staging models, which feed the daily no-show mart and then the clinic ranking](docs/images/dbt_lineage.png)
+### Setup 
 
----
-
-## 1. How to run it
-
-**Prerequisites:** Windows, git and **Python 3.13**. dbt doesn't install on Python 3.15 yet (D-python).
-If you don't have 3.13: `py install 3.13` with the Python install manager, or the installer from
-python.org. You also need VetOne API credentials from Nordvet IT.
-
-**Setup** (once, in PowerShell from the folder you want the project in):
+You will only have to do this once, in PowerShell from the folder you want the project in.
 
 ```bash
 git clone https://github.com/anjkrish2608/VetOneInsights.git
@@ -52,14 +35,41 @@ py -3.13 -m venv .venv
 copy .env.example .env
 ```
 
-Then open `.env` and fill in `VETONE_BASE_URL`, `VETONE_CLIENT_ID` and `VETONE_CLIENT_SECRET`.
+Then open `.env` and fill in:
+- `VETONE_BASE_URL`
+- `VETONE_CLIENT_ID` 
+- `VETONE_CLIENT_SECRET`
+
 `.env` is gitignored; never commit it.
 
-**Run** (one command, from the repo root):
+### Run (one command, from the repo root):
 
 ```bash
 .venv\Scripts\python run_pipeline.py
 ```
+
+- **Warnings to look for** in the log: `VetOne data looks stale`, `Last page was full …`, or
+  `Backfill has no deleted appointments`. Each one means VetOne may have changed how its API
+  behaves (D-api-change).
+- Safe to re-run at any time: nothing is duplicated or lost.
+
+
+## How it works
+Every morning, this pipeline pulls appointments for Nordvet's clinics from VetOne and showshow each clinic did on the last open day: confirmed no-shows, appointments still awaiting a
+ status, and the vet time lost. It also ranks clinics by no-show rate over recent days whosenumbers have settled. It answers Mette's "how did each clinic do yesterday?" and Karin's
+ "where are we losing money?" (in vet hours, since VetOne has no prices). It is a first slicit runs on a laptop today, and the target set-up in Nordvet's Azure is described below.
+
+ 
+```
+VetOne API ──► Python ingestion ──► raw tables ─────► dbt staging ─────► dbt marts ─────► Power BI
+               login, paging,       append-only:       latest version    one row per          FINDINGS.md
+               retries,             every version      per appointment,  clinic per day,
+               updated_since        ever fetched       deleted removed   and a clinic ranking
+```
+
+The same flow as dbt draws it from the code (`dbt docs`, see below):
+
+![dbt lineage graph: raw_appointments and raw_clinics feed the two staging models, which feed the daily no-show mart and then the clinic ranking](docs/images/dbt_lineage.png)
 
 - **First run** (empty database): a backfill from 1 Sep 2026 of about 50,000 appointments,
   taking about 2 minutes. Most of that is waiting when VetOne asks it to slow down.
@@ -67,31 +77,6 @@ Then open `.env` and fill in `VETONE_BASE_URL`, `VETONE_CLIENT_ID` and `VETONE_C
 - Then dbt checks that VetOne's data is fresh (`dbt source freshness`, a warning only) and
   `dbt build` builds the 4 models and runs all 37 data tests. The run ends with
   `Pipeline run … finished`, or exits with code 1 and a clear `FAILED` message.
-- **Warnings to look for** in the log: `VetOne data looks stale`, `Last page was full …`, or
-  `Backfill has no deleted appointments`. Each one means VetOne may have changed how its API
-  behaves (D-api-change).
-- Safe to re-run at any time: nothing is duplicated or lost.
-
-A first run from a fresh clone on 9 Nov 2026 (dbt's per-test lines shortened):
-
-```text
-INFO    run_pipeline: Pipeline run 20261109T133323Z started
-INFO    ingestion.vetone_client: Logged in to VetOne in 0.1s
-INFO    ingestion.vetone_client: Fetched 39 clinics
-INFO    run_pipeline: Raw is empty: backfilling 2026-09-01..2027-02-07
-WARNING ingestion.vetone_client: Rate limited (429); waiting 52s as Retry-After asks
-INFO    ingestion.vetone_client: Fetched 50495 appointments in 101 pages (67.5s) for 2026-09-01..2027-02-07
-INFO    ingestion.load_raw: Loaded run 20261109T133323Z: 50495 appointment rows, 39 clinic rows
-INFO    run_pipeline: raw_appointments now holds 50495 rows (50495 distinct appointments)
-INFO    run_pipeline: Running dbt build
-        ...
-        Done. PASS=23 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=23
-INFO    run_pipeline: dbt build passed in 13.0s
-INFO    run_pipeline: Pipeline run 20261109T133323Z finished in 131.8s
-```
-
-(That run was before the marts and the freshness check existed. Today `dbt build` has 41
-steps: 4 models and 37 tests.)
 
 **See the output:**
 
@@ -152,7 +137,7 @@ steps: 4 models and 37 tests.)
 
 ---
 
-## 2. Data model
+###  2. Data model
 
 | Layer | Model | One row per | What it does |
 |---|---|---|---|
@@ -171,7 +156,9 @@ the daily mart reconciles to staging.
 
 ---
 
-## 3. Assumptions
+## Repo structure
+
+## Assumptions
 
 **The metric** (fixed with Nordvet's brief):
 - No-show rate = no-shows ÷ (completed + no-shows). Cancelled appointments are left out (D-formula).
@@ -202,7 +189,7 @@ the daily mart reconciles to staging.
 
 ---
 
-## 4. Left out on purpose
+## Left out on purpose
 
 | Left out | Why |
 |---|---|
@@ -226,7 +213,7 @@ new token on any 401, which is tested with an invalid token.
 
 ---
 
-## 5. Where it would run for Nordvet
+## Where this runs for Nordvet (Azure)
 
 Nordvet already uses Microsoft 365 and Azure, so the pipeline moves there with as little new
 as possible. The Python and dbt code stays the same apart from the database it writes to.
@@ -244,6 +231,7 @@ as possible. The Python and dbt code stays the same apart from the database it w
                                          Karin: lost vet hours by clinic
         Failed run ──► Azure Monitor alert email to Emil's team
 ```
+
 
 **Components:**
 - **Azure Container Apps Job** runs the same command on a daily schedule. A failed run exits
@@ -284,3 +272,21 @@ be worth a few cents.
   numbers, and `last_loaded_at` shows how old they are (D-api-change).
 - **Nordvet IT** owns the VetOne credentials and rotates them in Key Vault.
 - **Heyra** hands over the repo, this README and DECISIONS.md, and a walkthrough of the dbt docs.
+
+---
+
+## What I'd do next
+
+---
+
+## More detail 
+  - **What we found:** [FINDINGS.md](FINDINGS.md)
+  - **Why it's built this way:** [DECISION S.md](DECISIONS.md) (decisions are referred to as D-… below)
+  - **What the VetOne API actually does:** [docs/vetone_api_notes.md](docs/vetone_api_notes.md)
+
+
+
+
+
+
+
