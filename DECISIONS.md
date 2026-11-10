@@ -24,7 +24,7 @@ Entries marked `> **REVIEW:**` are missing a required part or have a thin "why";
 - [dbt models](#dbt-models): D-materialization, D-stg-clinics, D-dedupe, D-timestamps, D-test-severity, D-marts, D-as-of, D-singular-tests, D-analyses, D-dbt-run
 - [Metric](#metric): D-formula, D-metric, D-settled, D-last-open-day, D-ranking-window, D-inactive, D-money, D-late-cancellations, D-fields
 - [Findings](#findings): D-findings, D-findings-snapshot, D-morning-sample, D-fte, D-findings-staging
-- [Production (Azure)](#production-azure): D-azure
+- [Production (Azure)](#production-azure): D-azure, D-pricing
 - [API observations](#api-observations)
 - [Next steps / what I'd change with more time](#next-steps--what-id-change-with-more-time)
 
@@ -628,7 +628,12 @@ Rejected: strict calendar yesterday (`days_ago = 1`): empty every Monday and aft
 - Each window shows its counts (no-shows, completed) next to the rate, so a small sample is
   visible, plus the network rate and the clinic's gap to it in percentage points.
 - 28 is a dbt variable (`ranking_window_days`).
-Rejected: only the recent window (no baseline); only history (reacts slowly to change).
+- Why exactly 28 (added 10 Nov): it's 4 whole weeks, so every weekday appears exactly 4 times.
+  That matters because no-show rates differ by weekday (Monday 10.5%, other days 7.7-8.5%;
+  FINDINGS.md finding 5). A 30-day window would count some weekdays 5 times and others 4, so
+  a clinic's rank could shift just because the window held an extra Monday.
+Rejected: only the recent window (no baseline); only history (reacts slowly to change);
+30 days or a calendar month (uneven weekday mix, see above).
 
 **D-inactive - Inactive clinics are left out of the ranking but keep their daily history.**
 > **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
@@ -771,6 +776,21 @@ Rejected:
 - a scheduled pipeline in Azure DevOps or GitHub Actions running the same commands (the
   simplest option, no container and often free, but it uses a build tool as a scheduler, with
   weaker monitoring and alerting than an Azure job; a fair stop-gap)
+
+**D-pricing - Azure costs are USD list prices, as an order-of-magnitude estimate, not a regional quote.**
+Status: Changed 10 Nov. Replaces "price it for Sweden Central in DKK" from the same day.
+Context (why): Karin's test only needs the order of magnitude. Even 10x higher, about $10-30 a
+month is negligible next to about 560 lost vet hours a month, so an exact regional price
+wouldn't change any decision.
+Decision (what): keep the USD list prices checked 9-10 Nov in the README, labelled as a rough
+estimate; get a real quote as part of the "Deploy to Azure" step.
+Rejected: an exact quote in the Azure pricing calculator for Sweden Central in DKK (the right
+region and currency for a real deployment: EU and Nordic data, Danish majority of clinics;
+some services weren't offered in a Denmark region. But it takes time for no difference here).
+Trade-offs: the figures are indicative; Nordvet's actual bill (region, currency, agreement)
+will differ.
+Change if: Nordvet approves the deployment; then price it for Sweden Central (or North Europe
+as fallback) in Nordvet's billing currency.
 
 ## API observations
 Moved to [docs/vetone_api_notes.md](docs/vetone_api_notes.md) on 9 Nov: what the API and the
