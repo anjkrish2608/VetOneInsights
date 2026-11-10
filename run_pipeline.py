@@ -74,7 +74,8 @@ def ingest(settings: dict[str, str], run_id: str, loaded_at: datetime) -> None:
             if not appointments:
                 log.warning("Backfill returned 0 appointments; check BACKFILL_FROM")
             elif not any(a.get("deleted_at") for a in appointments):
-                # The 9 Nov backfill had 702 deleted appointments (API note 1).
+                # A normal backfill includes hundreds of deleted appointments (API note 1),
+                # so none at all suggests include_deleted has stopped working.
                 log.warning(
                     "Backfill has no deleted appointments; include_deleted may have "
                     "stopped working, so deleted ones would be counted (D-api-change)"
