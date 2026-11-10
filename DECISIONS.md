@@ -102,7 +102,6 @@ Rejected:
 **D-python - Python 3.13 for the project venv (decided 9 Nov).**
 > **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
 > and "Change if:" (what would reopen it). If the text already describes a cost, label it.
-Evidence: API note [20](docs/vetone_api_notes.md#20-dbt-duckdb-does-not-install-on-python-315).
 dbt-duckdb does not install on Python 3.15: its dependency pyyaml has no ready-made package
 for 3.15 yet, and building it needs Microsoft C++ Build Tools. 3.13 installs cleanly with
 dbt-core 1.12.6, dbt-duckdb 1.11.1 and duckdb 2.0.0, and meets the 3.11+ requirement.
@@ -467,7 +466,9 @@ Rejected:
 
 **D-timestamps - Cast to `timestamptz` with the dbt session in UTC; keep the local date as text gives it.**
 - All timestamps are cast to `timestamptz`, never `timestamp`, which silently drops the
-  offset (docs/vetone_api_notes.md, note 19). `profiles.yml` sets the session timezone to UTC.
+  offset: found while building, `cast('2026-11-09T13:28:00+01:00' as timestamp)` gives 13:28,
+  not 12:28 UTC, so every `scheduled_at` would be off by one or two hours. `timestamptz` with
+  the session timezone set to UTC gives 12:28. `profiles.yml` sets the session timezone to UTC.
 - `scheduled_date_local` = the first 10 characters of `scheduled_at` (e.g. 2026-11-05).
   The API already sends the clinic's local time, so its date part *is* the clinic's day.
   This is the "day" for all reporting ("yesterday per clinic").
@@ -529,7 +530,6 @@ easier for Emil's team to read).
 **D-analyses - The SQL behind FINDINGS.md lives in `nordvet_dbt/analyses/` (folder added 9 Nov, approved).**
 > **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
 > and "Change if:" (what would reopen it). If the text already describes a cost, label it.
-Evidence: API note [21](docs/vetone_api_notes.md#21-windows-console-and-dbt-show-quirks).
 What: one analysis file per number in FINDINGS.md (11 files, `findings_01_...` to
 `findings_11_...`), linked from its appendix. Run with
 `dbt show --select <name>`.
@@ -537,6 +537,9 @@ Why: `analyses/` is dbt's own folder for ad-hoc SQL that isn't a model. The quer
 `ref()` like the models (the CLAUDE.md rule), so `dbt compile` checks them and they break
 loudly if a model is renamed, instead of going stale in a Markdown file. They follow the
 same CTE style. Checked 9 Nov: all 11 run and match the numbers in FINDINGS.md.
+One catch found while building: `dbt show` adds its own `limit` to the query, so an analysis
+ending in `limit 5` fails (`Parser Error: syntax error at or near "limit"`). The top-5 analysis
+picks its rows with `row_number()` in a CTE instead, which also ports to T-SQL.
 Rejected:
 - SQL pasted into the FINDINGS.md appendix (the first version: hard-coded table names, not
   checked by dbt, and long for Mette to scroll past)
