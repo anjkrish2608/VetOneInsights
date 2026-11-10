@@ -6,7 +6,8 @@ observations, not choices: the choices they led to are in [DECISIONS.md](../DECI
 
 Found mostly during the API exploration on 9 Nov 2026, some earlier in the SQLite-era work
 ([history/DECISIONS_v1.md](history/DECISIONS_v1.md)). Raw responses from the exploration are in
-`data/explore/` (gitignored, so local only).
+`data/explore/` (gitignored, so local only). They are saved exactly as VetOne sent them, so
+unlike the pipeline's database they include `patient_ref` and `vet_id` (D-fields).
 
 Each note has four parts:
 - **Observed:** what the API or data does

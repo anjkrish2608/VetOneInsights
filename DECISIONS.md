@@ -665,7 +665,13 @@ Rejected for now:
 > **REVIEW:** no "Rejected" section. The "Why not `patient_ref`" and "Why not `vet_id`"
 > lines are the rejected options; label them as Rejected (e.g. "storing every field the
 > API sends").
-`patient_ref` and `vet_id` are dropped in Python before loading, so they never reach disk.
+`patient_ref` and `vet_id` are dropped in Python before loading, so the pipeline never stores
+them: they are not in `data/nordvet.duckdb`, and nothing downstream can use them.
+Exception, outside the pipeline: the raw API responses saved as evidence during exploration
+(`data/explore/`, 9 Nov) and the SQLite-era JSON dumps in `data/` were kept exactly as VetOne
+sent them, so they do contain `patient_ref` and `vet_id`. They are local only (gitignored,
+never committed) and kept as the evidence behind docs/vetone_api_notes.md; delete them once
+that evidence is no longer needed (see Next steps).
 `created_at` is kept although nothing uses it yet: it is cheap and allows a later
 lead-time analysis (how far ahead was the booking made, and do late bookings no-show more?).
 Why not `patient_ref`: it's patient-related, and a clinic-level no-show view doesn't need it.
@@ -768,6 +774,8 @@ Candidates (Claude's suggestions: keep, edit or delete):
   recorded after the appointment started is really a no-show; then add a separate
   `late_cancellations` count to the daily mart, or fold them into the rate if Nordvet agrees
 - Lead-time analysis using `created_at`: do bookings made far ahead (or last minute) no-show more?
+- Delete the local exploration and SQLite-era dumps in `data/` once their evidence is no longer
+  needed: they contain `patient_ref` and `vet_id` (D-fields)
 - Add pytest for the API client (pagination, token expiry, and the D-api-change guards, using
   recorded API responses) and run checks in GitHub Actions
 - Weekly re-pull of the last 14 days, compared with raw, to catch `updated_since` drifting
