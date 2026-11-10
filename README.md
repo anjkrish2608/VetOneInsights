@@ -1,6 +1,6 @@
 # Nordvet no-show pipeline
 
-Nordvet runs 38 veterinary clinics across Denmark and Sweden. All clinics use the same practice management system, VetOne, for bookings and patient records
+Nordvet runs 38 veterinary clinics across Denmark and Sweden. All clinics use the same practice management system, VetOne, for bookings and patient records.
 
 ## The problem
 
@@ -17,13 +17,21 @@ Constraints that shaped it:
 - it has to cost less than the no-shows do (Karin)
 - it runs as a daily batch rather than real-time, because a morning view doesn’t need streaming (Anders)
 
+### More detail 
+  - **What we found:** [FINDINGS.md](FINDINGS.md)
+  - **Why it's built this way:** [DECISIONS.md](DECISIONS.md) (decisions are referred to as D-… below)
+  - **What the VetOne API actually does:** [docs/vetone_api_notes.md](docs/vetone_api_notes.md)
+
+---
+
 ## Quickstart
-### Prerequisites:
+### Prerequisites
 - Windows
 - git 
 -  **Python 3.13**. dbt doesn't install on Python 3.15 yet (D-python)
+- VetOne API credentials from Nordvet IT
 
-**If you don't have 3.13: `py install 3.13` with the Python install manager, or the installer from python.org. You also need VetOne API credentials from Nordvet IT.**
+If you don't have 3.13: `py install 3.13` with the Python install manager, or the installer from python.org.
 
 ### Setup 
 
@@ -56,38 +64,43 @@ Then open `.env` and fill in:
 
 `.env` is gitignored; never commit it.
 
-### Run (one command, from the repo root):
+### Run (one command, from the repo root)
 
 ```bash
 .venv\Scripts\python run_pipeline.py
 ```
 
 - **First run** (empty database): a backfill from 1 Sep 2026 of about 50,000 appointments, taking about 2 minutes. Most of that is waiting when VetOne asks it to slow down.
-- **Every run after that:** only appointments changed since the last run. A few seconds. Then dbt checks that VetOne's data is fresh (`dbt source freshness`, a warning only) and `dbt build` builds the models and runs all data tests. The run ends with `Pipeline run … finished`, or exits with code 1 and a clear `FAILED` message.
+- **Every run after that:** only appointments changed since the last run. A few seconds.
+- **Each run then** checks that VetOne's data is fresh (`dbt source freshness`, a warning only), and `dbt build` builds the models and runs all data tests. The run ends with `Pipeline run … finished`, or exits with code 1 and a clear `FAILED` message.
 - **Safe to re-run** at any time: nothing is duplicated or lost.
 - **Warnings to look for** in the log: `VetOne data looks stale`, `Last page was full …`, or `Backfill has no deleted appointments`. Each one means VetOne may have changed how its API behaves (D-api-change).
 
 
-### Review the output:
+### Review the output
+The findings for Mette, with the numbers explained, are in [FINDINGS.md](FINDINGS.md).
+
 The two report tables live in `data/nordvet.duckdb`: `mart_clinic_daily_noshows` and `mart_clinic_noshow_ranking`.
 
 Mette's morning view (last open day, most no-shows first, D-morning-sample):
 
-  ```bash
-  .venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --limit 50 --inline "select clinic_name, appointments, no_shows, awaiting_status, round(100 * no_show_rate, 1) as rate_pct from {{ ref('mart_clinic_daily_noshows') }} where is_last_open_day order by no_shows desc, awaiting_status desc"
-  ```
+```bash
+.venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --limit 50 --inline "select clinic_name, appointments, no_shows, awaiting_status, round(100 * no_show_rate, 1) as rate_pct from {{ ref('mart_clinic_daily_noshows') }} where is_last_open_day order by no_shows desc, awaiting_status desc"
+```
 
-  The ranking (worst no-show rate first over the recent settled days, D-ranking-window):
+The ranking (worst no-show rate first over the recent settled days, D-ranking-window):
 
-  ```bash
-  .venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --limit 50 --inline "select rank_recent, clinic_name, round(100 * no_show_rate_recent, 1) as rate_pct, no_shows_recent, lost_vet_hours_recent from {{ ref('mart_clinic_noshow_ranking') }} order by rank_recent"
-  ```
+```bash
+.venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --limit 50 --inline "select rank_recent, clinic_name, round(100 * no_show_rate_recent, 1) as rate_pct, no_shows_recent, lost_vet_hours_recent from {{ ref('mart_clinic_noshow_ranking') }} order by rank_recent"
+```
 
-  Where the most vet time is lost (for Karin: total hours, so busy clinics rank higher, D-money):
+Where the most vet time is lost (for Karin: total hours, so busy clinics rank higher, D-money):
 
-  ```bash
-  .venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --limit 50 --inline "select clinic_name, lost_vet_hours_recent, no_shows_recent, round(100 * no_show_rate_recent, 1) as rate_pct, rank_recent from {{ ref('mart_clinic_noshow_ranking') }} order by lost_vet_hours_recent desc"
-  ```
+```bash
+.venv\Scripts\dbt show --project-dir nordvet_dbt --profiles-dir nordvet_dbt --limit 50 --inline "select clinic_name, lost_vet_hours_recent, no_shows_recent, round(100 * no_show_rate_recent, 1) as rate_pct, rank_recent from {{ ref('mart_clinic_noshow_ranking') }} order by lost_vet_hours_recent desc"
+```
+
+---
 
 ## How it works
 Python fetches appointments and clinics from VetOne; dbt turns them into two report tables.
@@ -118,18 +131,36 @@ Python only does the API part; everything after the raw tables is SQL in dbt.
 | mart | `mart_clinic_daily_noshows` | clinic per day | Counts, confirmed rate with lower/upper bounds, awaiting status, lost vet minutes, and `last_loaded_at` (when data last arrived). Mette's view: `is_last_open_day`. |
 | mart | `mart_clinic_noshow_ranking` | active clinic | Rate over the newest 28 settled days (ranked) and over all history (baseline), with the gap to the network rate. |
 
-Data quality checks are dbt tests: unique and not-null keys, allowed status values, appointments → clinics, plus three SQL tests: rates between 0 and 1, lower ≤ rate ≤ upper, and the daily mart reconciles to staging.
+**Data quality** (all checked by `dbt build` on every run; a failure stops the run before the marts are rebuilt, so Mette never sees numbers from bad data):
+- **Keys:** every appointment and clinic id is unique and present
+- **Allowed values:** an unknown status fails the run; an unknown service only warns (D-test-severity)
+- **Relationships:** every appointment belongs to a known clinic
+- **Sanity:** rates are between 0 and 1, and lower ≤ confirmed ≤ upper
+- **Reconciliation:** each day's total in the report matches staging, so nothing is lost between layers
+- **Freshness:** a warning if VetOne hasn't sent a change in 48 hours (D-api-change)
 
 ---
 
 ## Repo structure
 
+- [README.md](README.md): this file
+- [FINDINGS.md](FINDINGS.md): the findings for Mette
+- [DECISIONS.md](DECISIONS.md): every design choice, what was rejected and why
+- [CLAUDE.md](CLAUDE.md): working instructions for the AI assistant used to build it
 - [run_pipeline.py](run_pipeline.py): the one command; ingests, then runs dbt
-- [ingestion/](ingestion/): Python for the API part only (VetOne client and raw loader)
-- [nordvet_dbt/models/](nordvet_dbt/models/): dbt SQL, `staging/` and `marts/`
-- [nordvet_dbt/tests/](nordvet_dbt/tests/): the three SQL data tests
-- [nordvet_dbt/analyses/](nordvet_dbt/analyses/): the SQL behind each number in FINDINGS.md
-- [docs/](docs/): VetOne API notes, the SQLite-era decision log, screenshots
+- [requirements.txt](requirements.txt): pinned Python packages
+- [.env.example](.env.example): the settings to fill in, with placeholder values
+- [ingestion/](ingestion/): Python for the API part only
+  - [vetone_client.py](ingestion/vetone_client.py): login, paging, retries, input checks
+  - [load_raw.py](ingestion/load_raw.py): appends each run's rows to the raw tables
+- [nordvet_dbt/](nordvet_dbt/): the dbt project (all SQL)
+  - [models/staging/](nordvet_dbt/models/staging/): cleans raw data, one row per appointment and clinic
+  - [models/marts/](nordvet_dbt/models/marts/): the two report tables
+  - [tests/](nordvet_dbt/tests/): the three SQL data tests
+  - [analyses/](nordvet_dbt/analyses/): the SQL behind each number in FINDINGS.md
+- [docs/](docs/)
+  - [vetone_api_notes.md](docs/vetone_api_notes.md): what the VetOne API actually does
+  - [history/DECISIONS_v1.md](docs/history/DECISIONS_v1.md): the earlier SQLite-era decision log
 - `data/`: the local DuckDB file (gitignored, created on the first run)
 
 ## Assumptions
@@ -137,29 +168,21 @@ Data quality checks are dbt tests: unique and not-null keys, allowed status valu
 **The metric** (fixed with Nordvet's brief):
 - No-show rate = no-shows ÷ (completed + no-shows). Cancelled appointments are left out (D-formula).
 - "Yesterday" = the last day any clinic was open, so Saturday on a Monday (D-last-open-day).
-- No-shows are recorded about a day late, so yesterday is shown as confirmed no-shows plus a
-  separate "awaiting status" count, with a lower and upper rate (D-metric).
+- No-shows are recorded about a day late (D-metric).
 - The last 3 days are unsettled and left out of the ranking (D-settled).
-- Money is measured as booked vet minutes lost, because VetOne has no prices (D-money).
-  "Full-time vets" assumes a 37-hour week (D-fte).
+- Money is measured as booked vet minutes lost, because VetOne has no prices (D-money). "Full-time vets" assumes a 37-hour week (D-fte).
 
 **The data:**
 - VetOne sends each appointment's start in the clinic's local time; that date is the "day" (D-timestamps).
 - `duration_minutes` is the booked length, fixed per service.
-- Clinics are closed on Sundays. VetOne lists 39 clinics (the brief says 38); Ystad is
-  inactive and left out of the ranking (D-inactive).
-- A cancellation recorded after the appointment started is still treated as a cancellation,
-  not a no-show. This is a question for Nordvet (D-late-cancellations).
+- Clinics are closed on Sundays. VetOne lists 39 clinics (the brief says 38); Ystad is inactive and left out of the ranking (D-inactive).
+- A cancellation recorded after the appointment started is still treated as a cancellation, not a no-show. This is a question for Nordvet (D-late-cancellations).
 
 **The API** (found by testing; evidence in [docs/vetone_api_notes.md](docs/vetone_api_notes.md)):
-- Deleted appointments are hidden unless `include_deleted=true` is sent, and only the exact
-  value `true` works (D-deleted).
-- `updated_since` returns every appointment changed since a time, including old ones whose
-  status changed late. The pipeline uses the newest `updated_at` it already has (D-incremental).
-- `limit` is silently capped at 500; some wrong parameters return 200 with wrong data, so the
-  code checks its own inputs (D-backfill, D-validate).
-- Tokens last 60 minutes; VetOne returns temporary 500s and rate limits (429) with
-  `Retry-After`, and the pipeline handles each (D-errors).
+- Deleted appointments are hidden unless `include_deleted=true` is sent, and only the exact value `true` works (D-deleted).
+- `updated_since` returns every appointment changed since a time, including old ones whose status changed late. The pipeline uses the newest `updated_at` it already has (D-incremental).
+- `limit` is silently capped at 500; some wrong parameters return 200 with wrong data, so the code checks its own inputs (D-backfill, D-validate).
+- Tokens last 60 minutes; VetOne returns temporary 500s and rate limits (429) with `Retry-After`, and the pipeline handles each (D-errors).
 
 ---
 
@@ -170,7 +193,7 @@ Data quality checks are dbt tests: unique and not-null keys, allowed status valu
 | Real-time | Mette needs yesterday, each morning. No-shows arrive a day late anyway, so real-time would show wrong numbers faster and cost more (D-batch). |
 | Building anything in Azure | The brief asks for a local first slice; the Azure set-up is described below. |
 | A Power BI report | FINDINGS.md covers Mette's question in this slice; the marts are ready for Power BI. |
-| Docker, Airflow and other orchestrators | One daily job; a scheduled `python run_pipeline.py` is enough (D-entry). |
+| Docker on the laptop, Airflow and other orchestrators | One daily job; a scheduled `python run_pipeline.py` is enough (D-entry). Production in Azure adds a small Dockerfile to package it (D-azure). |
 | Python unit tests (pytest) | Data checks in dbt come first; unit tests for the API client are a next step (D-tests). |
 | Vet- and patient-level analysis | Not needed for a clinic view; `vet_id` and `patient_ref` aren't stored (D-fields). |
 | Kroner | VetOne has no prices; lost time is in vet hours until Nordvet gives a rate per hour (D-money). |
@@ -182,20 +205,17 @@ Data quality checks are dbt tests: unique and not-null keys, allowed status valu
 | dbt v2 | dbt Core v1 has the adapter support and documentation Emil's team will need (D-dbt-v1). |
 | Hosting the dbt docs | They run locally; a static site in Azure is a small next step. |
 
-Known gap: the API's response to an expired token was never observed; the pipeline fetches a
-new token on any 401, which is tested with an invalid token.
-
 ---
 
 ## Where this runs for Nordvet (Azure)
 
-Nordvet already uses Microsoft 365 and Azure, so the pipeline moves there with as little new
-as possible. The Python and dbt code stays the same apart from the database it writes to.
+Nordvet already uses Microsoft 365 and Azure, so the pipeline moves there with as little new technology as possible. The Python and dbt code stays the same apart from the database it writes to.
 
 ```
  06:00  Azure Container Apps Job ──► VetOne API
         runs: python run_pipeline.py
         secrets from Key Vault
+        image from Container Registry
               │
               ▼
         Azure SQL Database  (raw ─► staging ─► marts, built by dbt)
@@ -209,6 +229,7 @@ as possible. The Python and dbt code stays the same apart from the database it w
 
 **Components:**
 - **Azure Container Apps Job** runs the same command on a daily schedule. A failed run exits with code 1, so Azure marks it failed and Azure Monitor emails the team.
+- **Azure Container Registry** holds the job's container image: Python 3.13, the pinned packages and this code, described in a small Dockerfile (about 8 lines). The registry builds the image in the cloud, so nobody at Nordvet needs Docker installed, and the code doesn't change.
 - **Azure Key Vault** holds the VetOne credentials. They reach the job as environment variables, which the code already reads, so no code changes.
 - **Azure SQL Database** replaces the DuckDB file (D3, D-azure). Emil's team already knows SQL Server tools, and Power BI connects to it natively. The dbt models move with the `dbt-sqlserver` adapter; a few DuckDB-specific bits need rewriting in T-SQL (`qualify` in the dedupe, `timezone()`, `strftime`, `datediff`), and the raw loader switches from DuckDB to an Azure SQL connection.
 - **Power BI** reads the two marts, refreshed after the job. Mette gets the morning view by email subscription or in Teams (e.g. via Power Automate), so there's nothing extra to open. To check with Nordvet first: subscription emails and sharing need Power BI Pro (or Premium Per User / capacity), so this depends on what their licence includes. Not verified yet.
@@ -219,8 +240,9 @@ as possible. The Python and dbt code stays the same apart from the database it w
 |---|---|
 | Container Apps Job | **$0**: a 2-minute daily run uses about 1% of the free monthly grant (180,000 vCPU-seconds) |
 | Azure SQL Database, Basic (5 DTU, 2 GB) | **about $5** (up to about $20 in some regions); the data is tens of MB |
+| Container Registry, Basic | **about $5** ($0.167 a day, 10 GB included; checked 10 Nov) |
 | Key Vault, Azure Monitor | **a few dollars at most** |
-| **Infrastructure total** | **about $5–25 a month** |
+| **Infrastructure total** | **about $10–30 a month** |
 | Power BI Pro | $14 per user per month; included in Microsoft 365 E5, so Nordvet may already have it |
 
 **Against Karin's test** ("the platform must not cost more than the no-shows"): no-shows cost about 560 vet hours a month. For the infrastructure to cost as much, a vet hour would have to be worth a few cents.
@@ -229,7 +251,7 @@ as possible. The Python and dbt code stays the same apart from the database it w
 - **Emil's team** owns it after handover. They change the SQL models (dbt is SQL plus a little YAML), watch the failure alert and re-run a failed day with the same command.
 - **If VetOne changes its API**, the run either stops with a message naming what changed (a missing field or key, a new status, an error code) or logs one of the warnings above; it doesn't load quietly wrong numbers. After a failed run, Mette's view keeps the last good numbers, and `last_loaded_at` shows how old they are (D-api-change).
 - **Nordvet IT** owns the VetOne credentials and rotates them in Key Vault.
-- **Heyra** hands over the repo, this README and DECISIONS.md, and a walkthrough of the dbt docs.
+- **Heyra** hands over the repo, this README, FINDINGS.md, DECISIONS.md and the VetOne API notes, and a walkthrough of the dbt docs.
 
 **Everyday tasks** (shown with the laptop commands, from the repo root):
 - **Browse the models and the lineage graph** (after a run has finished, since DuckDB allows one writer at a time):
@@ -262,17 +284,3 @@ as possible. The Python and dbt code stays the same apart from the database it w
 - **A weekly cross-check** of recent data against VetOne, to catch `updated_since` drifting silently (D-api-change).
 
 The full list, with the reasons, is in [DECISIONS.md → Next steps](DECISIONS.md#next-steps--what-id-change-with-more-time).
-
----
-
-## More detail 
-  - **What we found:** [FINDINGS.md](FINDINGS.md)
-  - **Why it's built this way:** [DECISIONS.md](DECISIONS.md) (decisions are referred to as D-… below)
-  - **What the VetOne API actually does:** [docs/vetone_api_notes.md](docs/vetone_api_notes.md)
-
-
-
-
-
-
-

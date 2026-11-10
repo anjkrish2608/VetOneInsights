@@ -191,7 +191,6 @@ Documentation is split by the question each file answers (updated 9 Nov):
 - `docs/vetone_api_notes.md`: what the API and data actually do ("What did you find?")
 - `FINDINGS.md`: the results for Mette
 - `docs/history/DECISIONS_v1.md`: the SQLite-era log, moved out of the root unchanged
-- `docs/images/`: README screenshots (D-images)
 Observations used to sit at the end of DECISIONS.md; they moved out because a quirk is a
 fact about VetOne, while a decision is a choice that could have gone another way.
 Rejected:
@@ -211,18 +210,19 @@ Run it after a pipeline run (DuckDB allows one writer at a time). Tested 9 Nov.
 Rejected for now: hosting the docs as a static site in Azure (small next step); a hand-written
 data dictionary (would go out of date).
 
-**D-images - Screenshots live in `docs/images/` (folder added 9 Nov, approved).**
-> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
-> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
-Two PNGs taken from `dbt docs`: the lineage graph (raw -> staging -> marts) and the daily
-mart's documentation page. GitHub shows them inline in the README. Terminal output is shown as
-a text block from a real run instead of an image, so it can be read and copied.
-Status: Changed 10 Nov. The lineage image was removed (the README's text diagram shows the
-same flow, and `dbt docs` draws the live graph). The README restructure also dropped the docs
-page screenshot and the run-log text block; `dbt_docs_daily_mart.png` is still in
-`docs/images/` but not shown anywhere.
-Rejected: videos committed to the repo (large files); screenshots of the run output (text is
-clearer); embedding images from outside the repo (could break later).
+**D-images - No images in the documentation (changed 10 Nov).**
+Status: Changed 10 Nov. Replaces "screenshots live in `docs/images/`" (9 Nov): two PNGs from
+`dbt docs` (the lineage graph and the daily mart's docs page) were shown in the README. Both
+were removed, and the `docs/images/` folder with them.
+Why: the README's text diagram already shows the flow, and `dbt docs` draws the live lineage
+graph and every column from the code, so screenshots added nothing that can't go out of date.
+Text is also easier to read, search and copy.
+Rejected: keeping the screenshots (they go stale as models change); videos committed to the
+repo (large files); embedding images from outside the repo (could break later).
+Trade-offs: the README is less visual for a first-time reader; to see the lineage graph they
+run `dbt docs serve`.
+Change if: reviewers or Nordvet ask for a visual overview; then regenerate a screenshot from
+`dbt docs` rather than keeping an old one.
 
 ## Frequency
 **D-batch - Daily batch, not real-time.**
@@ -750,10 +750,17 @@ Described in the README, not built (decided 9 Nov).
   rewrites, and the raw loader switches from DuckDB to an Azure SQL connection.
 - Container Apps Job: runs the unchanged `python run_pipeline.py` daily. A 2-minute run uses
   about 1% of the free monthly grant (180,000 vCPU-seconds), so about $0.
+- Container image (added 10 Nov): a Container Apps Job runs a container image, so production
+  needs a small Dockerfile (Python 3.13, `pip install -r requirements.txt`, run
+  `run_pipeline.py`). Azure Container Registry builds it in the cloud (`az acr build`) and
+  stores it, so nobody at Nordvet installs Docker and the code doesn't change. This is why
+  "no Docker" in the README applies to the laptop only.
 - Key Vault for the VetOne credentials, passed in as environment variables (no code change).
 - Prices checked by web search on 9 Nov 2026 (list prices, USD): Azure SQL Basic about $5/month
   (up to ~$20 by region), Power BI Pro $14/user/month (raised from $10 in 2025; included in
-  Microsoft 365 E5). Infrastructure total about $5-25/month.
+  Microsoft 365 E5). Container Registry Basic checked 10 Nov: $0.167/day (about $5/month,
+  10 GB included; third-party listings, Microsoft's page showed no figure). Infrastructure
+  total about $10-30/month.
 Rejected:
 - DuckDB file on Azure storage with marts exported as Parquet (cheapest, no SQL rewrite, but
   Power BI reads files rather than a database and it is less familiar to Emil's team)
@@ -761,6 +768,9 @@ Rejected:
 - Azure Functions (a timer trigger works, but running dbt inside Functions is awkward; the job
   runs the same command as the laptop)
 - Azure Data Factory for the extract (heavier than one API call loop; a fair no-code option)
+- a scheduled pipeline in Azure DevOps or GitHub Actions running the same commands (the
+  simplest option, no container and often free, but it uses a build tool as a scheduler, with
+  weaker monitoring and alerting than an Azure job; a fair stop-gap)
 
 ## API observations
 Moved to [docs/vetone_api_notes.md](docs/vetone_api_notes.md) on 9 Nov: what the API and the

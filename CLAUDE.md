@@ -120,7 +120,6 @@ data/                # DuckDB file lives here, gitignored
 docs/
   vetone_api_notes.md  # API and data observations (see Documentation below)
   history/DECISIONS_v1.md  # SQLite-era log, historical, never edit its content
-  images/            # README screenshots (D-images)
 ```
 Don't add folders or files beyond this without asking.
 
