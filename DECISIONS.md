@@ -217,6 +217,10 @@ data dictionary (would go out of date).
 Two PNGs taken from `dbt docs`: the lineage graph (raw -> staging -> marts) and the daily
 mart's documentation page. GitHub shows them inline in the README. Terminal output is shown as
 a text block from a real run instead of an image, so it can be read and copied.
+Status: Changed 10 Nov. The lineage image was removed (the README's text diagram shows the
+same flow, and `dbt docs` draws the live graph). The README restructure also dropped the docs
+page screenshot and the run-log text block; `dbt_docs_daily_mart.png` is still in
+`docs/images/` but not shown anywhere.
 Rejected: videos committed to the repo (large files); screenshots of the run output (text is
 clearer); embedding images from outside the repo (could break later).
 
