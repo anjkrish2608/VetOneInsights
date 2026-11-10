@@ -122,10 +122,18 @@ Rejected: dbt v2 (newer, but the adapter support and know-how are thinner; upgra
 is a documented path).
 
 **D-lint - ruff for formatting and linting.**
-> **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
-> and "Change if:" (what would reopen it). If the text already describes a cost, label it.
-One fast tool instead of three.
+One fast tool instead of three: `ruff format` does black's job and `ruff check` does flake8's
+and isort's, so there's one thing to install, pin and explain. It checks the whole repo in
+well under a second, so it never gets skipped for being slow, and Emil's team inherits code in
+one consistent style that their own changes can be checked against. Pinned in requirements.txt
+(0.17.4). It caught real issues here, e.g. rule TRY004 asked for a `TypeError` rather than a
+`RuntimeError` for a wrong-shaped API response (D-api-change).
 Rejected: black + flake8 + isort (same job, more setup), no linter (inconsistent code at handover).
+Trade-offs: the repo has no ruff config file (no pyproject.toml or ruff.toml, checked 10 Nov),
+so the rules are ruff 0.17.4's built-in defaults. Pinning keeps them stable, but upgrading ruff
+can change which rules apply and flag code that passes today.
+Change if: Nordvet's team has its own Python style standard, or wants stricter or looser rules;
+then add a small `[tool.ruff]` config and commit it.
 
 **D-profiles - dbt profiles.yml committed in the repo.**
 > **REVIEW:** no labelled Consequences. Add "Trade-offs:" (what this costs or makes harder)
