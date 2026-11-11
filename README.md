@@ -194,13 +194,14 @@ All checked by `dbt build` on every run; a failure stops the run before the mart
 - VetOne sends each appointment's start in the clinic's local time; that date is the "day" (D-timestamps).
 - `duration_minutes` is the booked length, fixed per service.
 - Clinics are closed on Sundays. 
+- Bookings reach about 30 days ahead (on 9 Nov the furthest was 9 Dec; [API note 18](docs/vetone_api_notes.md#18-calendar-facts)); the first run fetches 90 days ahead to be safe (D-backfill).
 - VetOne lists 39 clinics (the brief says 38); Ystad is inactive and left out of the ranking (D-inactive).
 - A cancellation recorded after the appointment started is still treated as a cancellation, not a no-show. This is a question for Nordvet (D-late-cancellations).
 
 **The API** (testing evidence in [docs/vetone_api_notes.md](docs/vetone_api_notes.md)):
 - Deleted appointments are hidden unless `include_deleted=true` is sent, and only the exact value `true` works (D-deleted).
 - `updated_since` returns every appointment changed since a time, including old ones whose status changed late. The pipeline uses the newest `updated_at` it already has (D-incremental).
-- `limit` is silently capped at 500; some wrong parameters return 200 with wrong data, so the code checks its own inputs (D-backfill, D-validate).
+- `limit` is silently capped at 500; some wrong parameters return 200 with wrong data, so the code checks its own inputs (D-page-size, D-validate).
 - Tokens last 60 minutes; VetOne returns temporary 500s and rate limits (429) with `Retry-After`, and the pipeline handles each (D-errors).
 
 ---
@@ -227,9 +228,9 @@ All checked by `dbt build` on every run; a failure stops the run before the mart
 
 ---
 
-## Where this runs for Nordvet (Azure)
+## Where it would run for Nordvet (Azure, not built yet)
 
-Nordvet already uses Microsoft 365 and Azure, so the pipeline moves to Azure with as little new technology as possible. The Python and dbt code stays the same apart from the database it writes to.
+Nordvet already uses Microsoft 365 and Azure, so the pipeline would move to Azure with as little new technology as possible. The Python and dbt code stays the same apart from the database it writes to. Nothing below is built yet; the laptop version runs the same code.
 
 ```
 Container Registry (image) ──┐
@@ -245,14 +246,22 @@ Azure SQL Database (dbt: raw ─► staging ─► marts)
 Power BI report ──► Mette (email or Teams), Karin
 ```
 
-The job runs at 06:00 and Power BI refreshes at 07:00, so the view is ready when Mette starts work. If a run fails, Azure Monitor emails Emil's team.
+The job would run at 06:00 and Power BI would refresh at 07:00, so the view is ready when Mette starts work. If a run failed, Azure Monitor would email Emil's team.
 
+### To build
+1. A Dockerfile, with the image built and stored in Azure Container Registry
+2. Azure SQL Database, with `profiles.yml` pointed at it and the T-SQL changes made (listed under Components)
+3. The raw loader switched from DuckDB to Azure SQL
+4. Key Vault holding the VetOne credentials
+5. The Container Apps Job, scheduled daily at 06:00
+6. An Azure Monitor alert on failed runs
+7. The Power BI report on the marts, with a daily refresh and subscription, after checking Nordvet's licence
 
 ### Components
-- **Azure Container Apps Job** runs the same `python run_pipeline.py` command on a daily schedule. A failed run exits with code 1, so Azure marks it failed and Azure Monitor emails the team.
-- **Azure Container Registry** holds the job's container image: Python 3.13, the pinned packages and this code, described in a small Dockerfile (about 8 lines). The registry builds the image in the cloud, so nobody at Nordvet needs Docker installed, and the code doesn't change.
-- **Azure Key Vault** holds the VetOne credentials. They reach the job as environment variables, which the code already reads, so no code changes.
-- **Azure SQL Database** replaces the DuckDB file (D3, D-azure). Emil's team already knows SQL Server tools, and Power BI connects to it natively. The dbt models move with the `dbt-sqlserver` adapter (only `profiles.yml` changes to point at Azure SQL), and the raw loader switches from DuckDB to an Azure SQL connection. DuckDB and SQL Server speak slightly different SQL, so these need T-SQL equivalents:
+- **Azure Container Apps Job** would run the same `python run_pipeline.py` command on a daily schedule. A failed run exits with code 1, so Azure would mark it failed and Azure Monitor would email the team.
+- **Azure Container Registry** would hold the job's container image: Python 3.13, the pinned packages and this code, described in a small Dockerfile (about 8 lines). The registry would build the image in the cloud, so nobody at Nordvet needs Docker installed, and the code doesn't change.
+- **Azure Key Vault** would hold the VetOne credentials. They would reach the job as environment variables, which the code already reads, so no code changes.
+- **Azure SQL Database** would replace the DuckDB file (D3, D-azure). Emil's team already knows SQL Server tools, and Power BI connects to it natively. The dbt models would move with the `dbt-sqlserver` adapter (only `profiles.yml` changes to point at Azure SQL), and the raw loader would switch from DuckDB to an Azure SQL connection. DuckDB and SQL Server speak slightly different SQL, so these need T-SQL equivalents:
   - `qualify row_number() … = 1` in the dedupe → `row_number()` in a CTE, then `where rn = 1`
   - `timezone('Europe/Copenhagen', …)` for the as-of date → `at time zone 'Central European Standard Time'`
   - `strftime(date, '%Y-%m-%d')` in `clinic_day_id` → `format(date, 'yyyy-MM-dd')`
@@ -261,7 +270,8 @@ The job runs at 06:00 and Power BI refreshes at 07:00, so the view is ready when
   - `boolean` columns and filters like `where is_settled` → `bit` and `where is_settled = 1`
   - `||` to join text in `clinic_day_id` → `concat()`
   - `dayname()` and `isodow()` in the weekday analysis → `datename(weekday, …)` and `datepart(weekday, …)`
-- **Power BI** reads the two marts, refreshed after the job. Mette gets the morning view by email subscription or in Teams (e.g. via Power Automate), so there's nothing extra to open. To check with Nordvet first: subscription emails and sharing need Power BI Pro (or Premium Per User / capacity), so this depends on what their licence includes. Not verified yet.
+- **Power BI** would read the two marts, refreshed after the job. Mette would get the morning view by email subscription or in Teams (e.g. via Power Automate), so there's nothing extra to open. To check with Nordvet first: subscription emails and sharing need Power BI Pro (or Premium Per User / capacity), so this depends on what their licence includes. Not verified yet.
+- **Alternative for the extract:** if Nordvet would rather not maintain any Python, Azure Data Factory could take over the extract; dbt would still need a small job to run it (D-azure).
 
 ### Rough monthly cost
 Rough estimate in USD list prices (checked 9–10 Nov 2026); a real quote for Nordvet's region and currency comes with the deployment (D-pricing).
@@ -278,19 +288,23 @@ Rough estimate in USD list prices (checked 9–10 Nov 2026); a real quote for No
 **Against Karin's test** 
 "The platform must not cost more than the no-shows": the infrastructure is estimated at about $10–30 a month, while no-shows cost about 560 vet hours a month, so we are in the clear.
 
-### Who runs it
-- **Emil's team** owns it after handover. They change the SQL models (dbt is SQL plus a little YAML), watch the failure alert and re-run a failed day with the same command.
+### Who would run it
+- **Emil's team** would own it after handover. They change the SQL models (dbt is SQL plus a little YAML), watch the failure alert and re-run a failed day with the same command.
 - **If VetOne changes its API**, the run either stops with a message naming what changed (a missing field or key, a new status, an error code) or logs a warning to look out for: `VetOne data looks stale`, `Last page was full …` or `Backfill has no deleted appointments`. It doesn't load quietly wrong numbers. After a failed run, Mette's view keeps the last good numbers, and `last_loaded_at` shows how old they are (D-api-change).
-- **Nordvet IT** owns the VetOne credentials and rotates them in Key Vault.
+- **Nordvet IT** would own the VetOne credentials and rotate them in Key Vault.
 - **Heyra** hands over the repo, this README, FINDINGS.md, DECISIONS.md and the VetOne API notes, and a walkthrough of the dbt docs.
 
 ---
 
 ## What we'd do next
-1. **Deploy to Azure:** Container Apps Job, Key Vault and Azure SQL, as described above (D-azure).
+1. **Deploy to Azure:** work through the [To build](#to-build) list above (D-azure).
 2. **Power BI report** on the two marts for Mette, with "Data last updated" from `last_loaded_at`, after checking what Nordvet's Power BI licence includes.
-3. **Agree late cancellations and a vet-hour rate with Mette and Karin:** is a cancellation recorded after the appointment started really a no-show (D-late-cancellations), and what is a vet hour worth, so lost time can be shown in kroner (D-money)?
-4. **pytest for the API client:** paging, token expiry and the API-change guards, using recorded responses (D-tests, D-api-change).
-5. **Service/weekday mart,** so those two findings are built and tested every run instead of queried by hand (D-findings-staging).
+3. **Questions for Nordvet:**
+   - Are late cancellations really no-shows, and do they cluster in particular clinics? (D-late-cancellations)
+   - What is a vet hour worth, so lost time can be shown in kroner? (D-money)
+   - Do clinics already send appointment reminders? (FINDINGS.md)
+   - What changed at Odense C? (FINDINGS.md)
+4. **pytest for the API client:** paging, token expiry (including what an expired token actually returns) and the API-change guards, using recorded responses (D-tests, D-errors, D-api-change).
+5. **Alerting:** send pipeline warnings (stale data, a full last page, no deleted rows in a backfill) to Azure Monitor, alongside the alert for failed runs (D-api-change).
 
 The full list, with the reasons, is in [DECISIONS.md → Next steps](DECISIONS.md#next-steps--what-id-change-with-more-time).

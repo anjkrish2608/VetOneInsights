@@ -15,7 +15,7 @@ import requests
 log = logging.getLogger(__name__)
 
 PAGE_LIMIT = (
-    500  # the API's real maximum; higher values are silently capped (D-backfill)
+    500  # the API's real maximum; higher values are silently capped (D-page-size)
 )
 TIMEOUT_SECONDS = 60  # the first call can take ~20s while the API wakes up
 MAX_SERVER_RETRIES = 4  # 5xx and network errors: pauses of 2, 4, 8, 16s (D-errors)

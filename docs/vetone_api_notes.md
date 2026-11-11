@@ -59,7 +59,7 @@ Each note has four parts:
 - **Observed:** any value above 500 returns 500 rows; the default is 100.
 - **Evidence:** `limit=1000` and `limit=5000` both returned 500 rows. `0`, `-1` and `abc` get `400 invalid limit`.
 - **Impact:** code saying 1,000 would mislead readers; the default would mean 5x more calls on a rate-limited API.
-- **Handled:** `limit=500` (D-backfill).
+- **Handled:** `limit=500` (D-page-size).
 
 ### 8. The cursor carries its own filters
 - **Observed:** `next_cursor` is signed base64 JSON holding the original filters, an as-of timestamp and a sort key (`scheduled_at`, `id`). Filters sent alongside a cursor are ignored.
@@ -147,4 +147,4 @@ Each note has four parts:
 - **A change to the API's format or behaviour.** None seen so far, but VetOne is a live third-party system. How each kind of change would show up (a failed run, a warning, or a stale-data warning) is designed in D-api-change.
 
 - **The response to an expired token.** The test token was deleted before it expired. The 401 handling is tested with an invalid token instead (D-errors).
-- **Whether `from`/`to` mean the clinic's local date or UTC.** Appointments run 08:00-17:15, so the two are always the same date and the data can't tell them apart (D-backfill, Next steps).
+- **Whether `from`/`to` mean the clinic's local date or UTC.** Appointments run 08:00-17:15, so the two are always the same date and the data can't tell them apart (see Next steps in DECISIONS.md).

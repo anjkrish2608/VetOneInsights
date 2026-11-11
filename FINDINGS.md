@@ -68,7 +68,7 @@ Rates below are over the **newest 28 settled days (6 Oct – 5 Nov)** unless sta
 
 ## Questions for Nordvet
 
-1. **Are late cancellations really no-shows?** About 1 in 5 cancellations (743 of 3,519, 1 Sep – 5 Nov) is recorded *after* the appointment had started. These may be patients who didn't come. They are not counted as no-shows today. Should they be?
+1. **Are late cancellations really no-shows?** About 1 in 5 cancellations (743 of 3,519, 1 Sep – 5 Nov) is recorded *after* the appointment had started. These may be patients who didn't come, but aren't counted as no-shows today. If so, this can impact the clinics ranking.
 2. **What is the revenue per vet hour?** With it, lost time can be shown in kroner.
 3. **The brief says 38 clinics; VetOne lists 39.** The 39th, Nordvet Ystad, is marked inactive with no appointments since September. Is it closed? It's left out of the ranking.
 
